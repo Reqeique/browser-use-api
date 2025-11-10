@@ -1,7 +1,7 @@
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
 pydantic==2.10.3
-browser-use
+browser-use==0.9.5
 langchain-openai
 langchain-anthropic
 langchain-google-genai
