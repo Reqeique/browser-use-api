@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  browser-use-api:
+    build: .
+    container_name: browser-use-api
+    ports:
+      - "5000:5000"
+    environment:
+      # Browser-Use LLM
+      - BROWSER_USE_API_KEY=${BROWSER_USE_API_KEY}
+      # OpenAI
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Anthropic
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Google
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    restart: unless-stopped
+    volumes:
+      # Optional: Mount .env file for environment variables
+      - ./.env:/app/.env:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
