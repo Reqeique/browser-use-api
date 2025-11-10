@@ -1,6 +1,6 @@
-fastapi==0.115.5
-uvicorn[standard]==0.32.1
-pydantic==2.10.3
+fastapi
+uvicorn[standard]
+pydantic
 browser-use==0.9.5
 langchain-openai
 langchain-anthropic
