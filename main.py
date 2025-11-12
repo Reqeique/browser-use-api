@@ -83,6 +83,7 @@ class CreateTaskRequest(BaseModel):
     pageExtractionLlm: Optional[SupportedLLMs] = Field(default=SupportedLLMs.BROWSER_USE_LLM)
     storageStateUrl: Optional[str] = None  # NEW FIELD
     keepAlive: Optional[bool] = Field(default=False)
+    headless: Optional[bool] = Field(default=True)
 
 class TaskCreatedResponse(BaseModel):
     id: UUID4
@@ -130,10 +131,34 @@ class UpdateTaskRequest(BaseModel):
 class TaskLogFileResponse(BaseModel):
     downloadUrl: str
 
+
+class VncResponse(BaseModel):
+    port: int
+
+
 task_store: Dict[str, Dict[str, Any]] = {}
 session_store: Dict[str, Dict[str, Any]] = {}
 running_tasks: Dict[str, asyncio.Task] = {}
 paused_tasks: Dict[str, bool] = {}
+
+
+@app.get("/tasks/{task_id}/vnc", response_model=VncResponse, tags=["Tasks"])
+async def get_vnc_port(task_id: UUID4):
+    task_data = task_store.get(str(task_id))
+
+    if not task_data:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    browser = task_data.get("browser")
+    if not browser:
+        raise HTTPException(status_code=404, detail="Browser not running for this task")
+
+    vnc_port = getattr(browser, 'novnc_port', None)
+
+    if vnc_port is None:
+        raise HTTPException(status_code=404, detail="VNC not enabled for this task")
+
+    return VncResponse(port=vnc_port)
 
 def get_llm_model(llm_name: str):
     llm_map = {
@@ -195,10 +220,13 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
             import requests
             logger.info(f"[Task {task_id}] Initializing browser (start_url={request.startUrl})")
 
-            browser_config = {}
+            browser_config = {"vnc": True}
 
             if request.cdpUrl:
                 browser_config['cdp_url'] = request.cdpUrl
+
+            if request.headless is not None:
+                browser_config['headless'] = request.headless
 
             if request.startUrl:
                 browser_config["start_url"] = request.startUrl
@@ -225,6 +253,7 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
                     # Continue without storage state (or you can choose to fail the task)
 
             browser = Browser(**browser_config)
+            task_store[task_id]["browser"] = browser
             logger.info(f"[Task {task_id}] ✓ Browser initialized successfully")
         except Exception as e:
             error_msg = f"Failed to initialize browser: {str(e)}"
@@ -321,6 +350,8 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
         task_store[task_id]["error"] = str(e)
         task_store[task_id]["isSuccess"] = False
     finally:
+        if task_id in task_store and "browser" in task_store[task_id]:
+            del task_store[task_id]["browser"]
     # ✅ Always close the browser explicitly
         if browser is not None:
             try:
