@@ -901,7 +901,7 @@ async def launch_browser(request: BrowserSessionRequest, background_tasks: Backg
         elif request.profileDirectory:
           
             browser_config["profile_directory"] = request.profileDirectory
-            browser_config['user_data_dir'] = "~/.config/google-chrome/"
+            browser_config['user_data_dir'] = "/browser-use-profile"
             logger.info(f"[Browser Session {session_id}] Using profile directory: {request.profileDirectory}")
         # Launch browser session
         browser_config['args']= DEF_ARGS
