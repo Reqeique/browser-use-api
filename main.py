@@ -11,7 +11,8 @@ import logging
 from dotenv import load_dotenv
 
 load_dotenv()
-
+# Set DISPLAY environment variable
+os.environ['DISPLAY'] = ':99'
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,7 @@ class CreateTaskRequest(BaseModel):
     storageStateUrl: Optional[str] = None  # NEW FIELD
     keepAlive: Optional[bool] = Field(default=False)
     headless: Optional[bool] = Field(default=True)
+    profileDirectory: Optional[str] = None
 
 class TaskCreatedResponse(BaseModel):
     id: UUID4
@@ -131,34 +133,23 @@ class UpdateTaskRequest(BaseModel):
 class TaskLogFileResponse(BaseModel):
     downloadUrl: str
 
-
 class VncResponse(BaseModel):
-    port: int
-
+    url: str
+    status: str
+    display: str
 
 task_store: Dict[str, Dict[str, Any]] = {}
 session_store: Dict[str, Dict[str, Any]] = {}
 running_tasks: Dict[str, asyncio.Task] = {}
 paused_tasks: Dict[str, bool] = {}
-
-
-@app.get("/tasks/{task_id}/vnc", response_model=VncResponse, tags=["Tasks"])
-async def get_vnc_port(task_id: UUID4):
-    task_data = task_store.get(str(task_id))
-
-    if not task_data:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    browser = task_data.get("browser")
-    if not browser:
-        raise HTTPException(status_code=404, detail="Browser not running for this task")
-
-    vnc_port = getattr(browser, 'novnc_port', None)
-
-    if vnc_port is None:
-        raise HTTPException(status_code=404, detail="VNC not enabled for this task")
-
-    return VncResponse(port=vnc_port)
+DEF_ARGS = [
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--disable-extensions',
+    '--no-first-run',
+    '--disable-default-apps',
+]
 
 def get_llm_model(llm_name: str):
     llm_map = {
@@ -182,10 +173,13 @@ def get_llm_model(llm_name: str):
     return llm_map.get(llm_name, llm_map["browser-use-llm"])
 
 async def run_browser_task(task_id: str, request: CreateTaskRequest):
+    session_id = uuid.uuid4()
     browser = None
+    monitor_task = None
+    
     try:
         logger.info(f"[Task {task_id}] Starting task: {request.task}")
-        logger.info(f"[Task {task_id}] LLM: {request.llm}, Max Steps: {request.maxSteps}")
+        logger.info(f"[Task {task_id}] Using display: {os.environ.get('DISPLAY', 'Not set')}")
 
         if task_store[task_id]["status"] != TaskStatus.STOPPED:
             task_store[task_id]["status"] = TaskStatus.STARTED
@@ -202,7 +196,7 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
             page_extraction_module = __import__(page_extraction_module_name, fromlist=[page_extraction_class_name])
             page_extraction_llm_class = getattr(page_extraction_module, page_extraction_class_name)
             llm = llm_class(model=model_name) if model_name else llm_class()
-            page_extraction_llm = llm_class(model=page_extraction_model_name) if page_extraction_model_name else llm_class()
+            page_extraction_llm = page_extraction_llm_class(model=page_extraction_model_name) if page_extraction_model_name else page_extraction_llm_class()
 
             logger.info(f"[Task {task_id}] ✓ LLM initialized successfully")
         except Exception as e:
@@ -220,27 +214,28 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
             import requests
             logger.info(f"[Task {task_id}] Initializing browser (start_url={request.startUrl})")
 
-            browser_config = {"vnc": True}
+            browser_config = {}
+
+            # Force non-headless mode for VNC viewing
+            browser_config['headless'] = False
+            logger.info(f"[Task {task_id}] Browser set to non-headless mode for VNC")
 
             if request.cdpUrl:
                 browser_config['cdp_url'] = request.cdpUrl
-
-            if request.headless is not None:
-                browser_config['headless'] = request.headless
 
             if request.startUrl:
                 browser_config["start_url"] = request.startUrl
 
             if request.keepAlive:
                 browser_config["keep_alive"] = request.keepAlive
-            # Handle storageStateUrl - fetch and save to state.json
+
+            # Handle storageStateUrl
             if request.storageStateUrl:
                 try:
                     logger.info(f"[Task {task_id}] Fetching storage state from: {request.storageStateUrl}")
                     response = requests.get(request.storageStateUrl)
                     response.raise_for_status()
 
-                    # Create state.json file with absolute path
                     state_file_path = os.path.abspath("state.json")
                     with open(state_file_path, 'w') as f:
                         f.write(response.text)
@@ -248,13 +243,22 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
                     browser_config["storage_state"] = state_file_path
                     logger.info(f"[Task {task_id}] ✓ Storage state saved to {state_file_path}")
                 except Exception as e:
-                    error_msg = f"Failed to fetch or save storage state: {str(e)}"
-                    logger.error(f"[Task {task_id}] ✗ Storage state error: {error_msg}")
-                    # Continue without storage state (or you can choose to fail the task)
-
+                    logger.error(f"[Task {task_id}] ✗ Storage state error: {str(e)}")
+            elif request.profileDirectory:
+                browser_config["profile_directory"] = request.profileDirectory
+                browser_config['user_data_dir'] = "~/.config/google-chrome/"
+                logger.info(f"[Browser Session {session_id}] Using profile directory: {request.profileDirectory}")
+            
+            # Launch browser session
+            browser_config['args']= DEF_ARGS
+            print(browser_config)
+            os.system("pkill -f chrome")
+            browser_config['args']= DEF_ARGS
             browser = Browser(**browser_config)
             task_store[task_id]["browser"] = browser
-            logger.info(f"[Task {task_id}] ✓ Browser initialized successfully")
+            task_store[task_id]["vnc_enabled"] = True
+            
+            logger.info(f"[Task {task_id}] ✓ Browser initialized (VNC available at /vnc.html)")
         except Exception as e:
             error_msg = f"Failed to initialize browser: {str(e)}"
             logger.error(f"[Task {task_id}] ✗ Browser initialization failed: {error_msg}")
@@ -272,8 +276,6 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
             "browser": browser,
             "page_extraction_llm": page_extraction_llm,
         }
-        
-
 
         if request.maxSteps:
             agent_config["max_steps"] = request.maxSteps
@@ -282,6 +284,149 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
         agent = Agent(**agent_config)
         logger.info(f"[Task {task_id}] ✓ Agent created successfully")
 
+        # ✅ Helper function to extract step data
+        def extract_step_data(item, idx):
+            """Extract step data from history item with multiple fallback strategies"""
+            try:
+                # Initialize empty values
+                memory = ""
+                eval_prev = ""
+                next_goal = ""
+                url = ""
+                actions = []
+                
+                # Strategy 1: Check model_output (most common in browser-use)
+                if hasattr(item, 'model_output') and item.model_output:
+                    model_output = item.model_output
+                    
+                    # Extract current_state fields
+                    if hasattr(model_output, 'current_state') and model_output.current_state:
+                        current_state = model_output.current_state
+                        memory = str(getattr(current_state, 'memory', ''))
+                        eval_prev = str(getattr(current_state, 'evaluation_previous_goal', ''))
+                        next_goal = str(getattr(current_state, 'next_goal', ''))
+                    
+                    # Extract action
+                    if hasattr(model_output, 'action') and model_output.action:
+                        action = model_output.action
+                        if isinstance(action, list):
+                            actions = [str(a) for a in action]
+                        else:
+                            # Action might have a name/description
+                            action_str = str(getattr(action, 'name', '') or getattr(action, 'action', '') or action)
+                            if action_str:
+                                actions = [action_str]
+                
+                # Strategy 2: Check for direct state attribute
+                if hasattr(item, 'state') and item.state:
+                    state = item.state
+                    if not memory:
+                        memory = str(getattr(state, 'memory', ''))
+                    if not eval_prev:
+                        eval_prev = str(getattr(state, 'evaluation_previous_goal', ''))
+                    if not next_goal:
+                        next_goal = str(getattr(state, 'next_goal', ''))
+                
+                # Strategy 3: Check direct attributes on item
+                if not memory and hasattr(item, 'memory'):
+                    memory = str(item.memory)
+                if not eval_prev and hasattr(item, 'evaluation_previous_goal'):
+                    eval_prev = str(item.evaluation_previous_goal)
+                if not next_goal and hasattr(item, 'next_goal'):
+                    next_goal = str(item.next_goal)
+                
+                # Extract URL
+                if hasattr(item, 'state') and hasattr(item.state, 'url'):
+                    url = str(item.state.url)
+                elif hasattr(item, 'url'):
+                    url = str(item.url)
+                
+                # Extract actions if not already found
+                if not actions:
+                    if hasattr(item, 'action'):
+                        action = item.action
+                        if isinstance(action, list):
+                            actions = [str(a) for a in action]
+                        elif action:
+                            actions = [str(action)]
+                    elif hasattr(item, 'result') and hasattr(item.result, 'extracted_content'):
+                        actions = [str(a) for a in item.result.extracted_content]
+                
+                # Debug logging for first item
+                if idx == 0:
+                    logger.info(f"[Task {task_id}] === Step {idx} Debug Info ===")
+                    logger.info(f"[Task {task_id}] Item type: {type(item).__name__}")
+                    logger.info(f"[Task {task_id}] Item attrs: {[a for a in dir(item) if not a.startswith('_')]}")
+                    
+                    if hasattr(item, 'model_output') and item.model_output:
+                        logger.info(f"[Task {task_id}] model_output type: {type(item.model_output).__name__}")
+                        logger.info(f"[Task {task_id}] model_output attrs: {[a for a in dir(item.model_output) if not a.startswith('_')]}")
+                        
+                        if hasattr(item.model_output, 'current_state'):
+                            logger.info(f"[Task {task_id}] current_state: {item.model_output.current_state}")
+                        if hasattr(item.model_output, 'action'):
+                            logger.info(f"[Task {task_id}] action: {item.model_output.action}")
+                    
+                    logger.info(f"[Task {task_id}] Extracted - memory: {memory[:50]}, goal: {next_goal[:50]}, actions: {len(actions)}")
+                
+                return {
+                    "memory": memory,
+                    "evaluationPreviousGoal": eval_prev,
+                    "nextGoal": next_goal,
+                    "url": url,
+                    "actions": actions
+                }
+                
+            except Exception as e:
+                logger.error(f"[Task {task_id}] Error extracting step {idx}: {str(e)}")
+                return {
+                    "memory": "",
+                    "evaluationPreviousGoal": "",
+                    "nextGoal": "",
+                    "url": "",
+                    "actions": []
+                }
+
+        # ✅ NEW: Create background task to monitor agent progress in real-time
+        async def monitor_agent_progress():
+            """Poll agent history and update task_store in real-time"""
+            last_step_count = 0
+            while task_store[task_id]["status"] in [TaskStatus.STARTED, TaskStatus.PAUSED]:
+                try:
+                    # Access agent's history if available
+                    if hasattr(agent, 'history') and agent.history:
+                        current_history = agent.history
+                        
+                        # Check if new steps were added
+                        if hasattr(current_history, 'history') and len(current_history.history) > last_step_count:
+                            # Update steps in task_store
+                            steps = []
+                            for idx, item in enumerate(current_history.history):
+                                step_data = extract_step_data(item, idx)
+                                
+                                step = TaskStepView(
+                                    number=idx + 1,
+                                    memory=step_data["memory"],
+                                    evaluationPreviousGoal=step_data["evaluationPreviousGoal"],
+                                    nextGoal=step_data["nextGoal"],
+                                    url=step_data["url"],
+                                    screenshotUrl=None,
+                                    actions=step_data["actions"]
+                                )
+                                steps.append(step.dict())
+                            
+                            task_store[task_id]["steps"] = steps
+                            last_step_count = len(current_history.history)
+                            logger.info(f"[Task {task_id}] Updated with {last_step_count} steps")
+                    
+                    await asyncio.sleep(0.5)  # Poll every 500ms
+                except Exception as e:
+                    logger.error(f"[Task {task_id}] Error monitoring progress: {str(e)}")
+                    await asyncio.sleep(1)
+
+        # Start monitoring task
+        monitor_task = asyncio.create_task(monitor_agent_progress())
+
         start_time = datetime.now()
 
         try:
@@ -289,33 +434,49 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
             history = await agent.run()
             logger.info(f"[Task {task_id}] ✓ Agent.run() completed successfully")
 
+            # Cancel monitoring task
+            if monitor_task:
+                monitor_task.cancel()
+                try:
+                    await monitor_task
+                except asyncio.CancelledError:
+                    pass
+
             if task_id in running_tasks:
                 del running_tasks[task_id]
 
             if task_store[task_id]["status"] != TaskStatus.STOPPED:
                 task_store[task_id]["status"] = TaskStatus.FINISHED
                 task_store[task_id]["finishedAt"] = datetime.now()
-                task_store[task_id]["output"] = str(history)
                 task_store[task_id]["isSuccess"] = True
-                logger.info(f"[Task {task_id}] Task finished successfully with {len(getattr(history, 'history', []))} steps")
+                logger.info(f"[Task {task_id}] Task finished successfully")
 
+            # ✅ Extract final steps with improved logic
             steps = []
             if hasattr(history, 'history') and history.history:
                 for idx, item in enumerate(history.history):
+                    step_data = extract_step_data(item, idx)
+                    
                     step = TaskStepView(
                         number=idx + 1,
-                        memory=str(getattr(item, 'memory', '')),
-                        evaluationPreviousGoal=str(getattr(item, 'evaluation_previous_goal', '')),
-                        nextGoal=str(getattr(item, 'next_goal', '')),
-                        url=str(getattr(item, 'url', '')),
-                        screenshotUrl=None,
-                        actions=[str(action) for action in getattr(item, 'actions', [])]
+                        memory=step_data["memory"],
+                        evaluationPreviousGoal=step_data["evaluationPreviousGoal"],
+                        nextGoal=step_data["nextGoal"],
+                        url=step_data["url"],
+                        screenshotUrl=str(getattr(item, 'screenshot_url', None)) if hasattr(item, 'screenshot_url') else None,
+                        actions=step_data["actions"]
                     )
-                    steps.append(step)
+                    steps.append(step.dict())
 
-            task_store[task_id]["steps"] = [step.dict() for step in steps]
+            task_store[task_id]["steps"] = steps
+            
+            # ✅ Extract final output (structured or text)
+            final_output = history.final_result() if hasattr(history, 'final_result') else str(history)
+            task_store[task_id]["output"] = final_output
 
         except asyncio.CancelledError:
+            if monitor_task:
+                monitor_task.cancel()
             logger.warning(f"[Task {task_id}] Task was cancelled")
             if task_id in running_tasks:
                 del running_tasks[task_id]
@@ -326,6 +487,8 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
             raise
 
         except Exception as e:
+            if monitor_task:
+                monitor_task.cancel()
             logger.error(f"[Task {task_id}] ✗ Agent.run() failed with exception: {type(e).__name__}: {str(e)}")
             import traceback
             logger.error(f"[Task {task_id}] Traceback:\n{traceback.format_exc()}")
@@ -352,7 +515,7 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
     finally:
         if task_id in task_store and "browser" in task_store[task_id]:
             del task_store[task_id]["browser"]
-    # ✅ Always close the browser explicitly
+        # ✅ Always close the browser explicitly
         if browser is not None:
             try:
                 await browser.stop()
@@ -369,21 +532,55 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
                     logger.info(f"[Task {task_id}] ✓ Cleaned up state file")
             except Exception as e:
                 logger.warning(f"[Task {task_id}] Failed to clean up state file: {str(e)}")
+@app.get("/tasks/{task_id}/vnc", response_model=VncResponse, tags=["Tasks"])
+async def get_vnc_port(task_id: UUID4):
+    """
+    Get VNC connection details for watching the browser in real-time
+    """
+    task_data = task_store.get(str(task_id))
+    
+    if not task_data:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    # Check if task is running
+    if task_data["status"] not in [TaskStatus.STARTED, TaskStatus.PAUSED]:
+        raise HTTPException(status_code=400, detail="Task is not currently running")
+    
+    # Return VNC URL using the same port through nginx reverse proxy
+    return VncResponse(
+        url="/vnc.html?autoconnect=true&path=websockify",
+        status="available",
+        display=os.environ.get('DISPLAY', ':99')
+    )
 
-@app.get("/", tags=["Root"])
-async def root():
+@app.get("/vnc/health", tags=["VNC"])
+async def vnc_health_check():
+    """Check if VNC services are running"""
+    import subprocess
+    
+    checks = {}
+    
+    services = {
+        'xvfb': 'Xvfb',
+        'x11vnc': 'x11vnc',
+        'websockify': 'websockify',
+        'nginx': 'nginx'
+    }
+    
+    for name, process in services.items():
+        try:
+            result = subprocess.run(['pgrep', '-f', process], capture_output=True)
+            checks[name] = result.returncode == 0
+        except:
+            checks[name] = False
+    
+    all_healthy = all(checks.values())
+    
     return {
-        "message": "Browser-Use API v2",
-        "version": "2.0.0",
-        "docs": "/docs",
-        "endpoints": {
-            "POST /tasks": "Create a new browser automation task",
-            "GET /tasks": "List all tasks with pagination",
-            "GET /tasks/{task_id}": "Get detailed task information",
-            "PATCH /tasks/{task_id}": "Update task (stop, pause, resume)",
-            "GET /tasks/{task_id}/logs": "Get task execution logs",
-            "GET /health": "Health check"
-        }
+        "healthy": all_healthy,
+        "services": checks,
+        "vnc_url": "/vnc.html?autoconnect=true&path=websockify" if all_healthy else None,
+        "display": os.environ.get('DISPLAY', 'Not set')
     }
 
 @app.get("/health", tags=["Health"])
@@ -506,6 +703,24 @@ async def get_task(task_id: UUID4):
         error=task_data.get("error")
     )
 
+@app.get("/tasks/{task_id}/debug", tags=["Tasks"])
+async def debug_task(task_id: UUID4):
+    """Debug endpoint to see raw history structure"""
+    task_data = task_store.get(str(task_id))
+    
+    if not task_data:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    return {
+        "task_id": str(task_id),
+        "status": task_data["status"],
+        "raw_output": task_data.get("output"),
+        "steps_count": len(task_data.get("steps", [])),
+        "raw_steps": task_data.get("steps", []),
+        "has_browser": "browser" in task_data,
+        "vnc_enabled": task_data.get("vnc_enabled", False)
+    }
+
 @app.patch("/tasks/{task_id}", response_model=TaskView, tags=["Tasks"])
 async def update_task(task_id: UUID4, request: UpdateTaskRequest):
     task_data = task_store.get(str(task_id))
@@ -582,6 +797,340 @@ async def get_task_logs(task_id: UUID4):
     download_url = f"/tasks/{task_id}/logs/download"
 
     return TaskLogFileResponse(downloadUrl=download_url)
+
+# ---- Browser Session API (updated to match Browser / Page documentation) ----
+
+import json
+import tempfile
+from pathlib import Path
+
+class BrowserSessionRequest(BaseModel):
+    profileDirectory: Optional[str] = Field(default=None, description="Profile name for the browser session")
+    storageStateUrl: Optional[str] = Field(default=None, description="URL to fetch storage state from")
+    storageStateJson: Optional[Dict[str, Any]] = Field(default=None, description="Direct storage state JSON")
+    startUrl: Optional[str] = Field(default="https://google.com", description="Initial URL to navigate to")
+    headless: Optional[bool] = Field(default=False, description="Run browser in headless mode")
+    keepAlive: Optional[bool] = Field(default=True, description="Keep browser alive after opening")
+    viewport: Optional[Dict[str, int]] = Field(default={"width": 1920, "height": 1080})
+
+class BrowserSessionResponse(BaseModel):
+    sessionId: UUID4
+    status: str
+    vncUrl: str
+    startUrl: str
+    profileDirectory: Optional[str] = None
+    createdAt: datetime
+
+class BrowserSessionInfo(BaseModel):
+    sessionId: UUID4
+    status: str
+    profileDirectory: Optional[str]
+    startUrl: str
+    createdAt: datetime
+    vncUrl: str
+    isActive: bool
+
+# Browser session storage
+browser_sessions: Dict[str, Dict[str, Any]] = {}
+
+async def create_browser_profile(profile_directory: str, storage_state: Optional[Dict] = None) -> Path:
+    """Create a browser profile directory with optional storage state"""
+    profiles_dir = Path("/app/browser_profiles")
+    profiles_dir.mkdir(exist_ok=True)
+    
+    profile_path = profiles_dir / profile_directory
+    profile_path.mkdir(exist_ok=True)
+    
+    if storage_state is not None:
+        state_file = profile_path / "state.json"
+        with open(state_file, 'w') as f:
+            json.dump(storage_state, f)
+        return state_file
+    
+    return profile_path
+
+@app.post("/browser/launch", response_model=BrowserSessionResponse, tags=["Browser"])
+async def launch_browser(request: BrowserSessionRequest, background_tasks: BackgroundTasks):
+    """
+    Launch a browser instance with a specific profile for manual interaction via VNC.
+    The browser will stay open until explicitly closed.
+    """
+    session_id = uuid.uuid4()
+    
+    try:
+        from browser_use import Browser
+        import requests
+        
+        logger.info(f"[Browser Session {session_id}] Launching browser with profile: {request.profileDirectory}")
+        
+        browser_config = {
+            "headless": request.headless,
+            "keep_alive": request.keepAlive,
+        }
+        
+        # Handle storage state from various sources
+        storage_state_path: Optional[Path] = None
+        
+        if request.storageStateUrl:
+            logger.info(f"[Browser Session {session_id}] Fetching storage state from URL")
+            response = requests.get(request.storageStateUrl)
+            response.raise_for_status()
+            storage_state = response.json()
+            
+            if request.profileDirectory:
+                storage_state_path = await create_browser_profile(request.profileDirectory, storage_state)
+            else:
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                    json.dump(storage_state, f)
+                    storage_state_path = Path(f.name)
+            
+            browser_config["storage_state"] = str(storage_state_path)
+            
+        elif request.storageStateJson:
+            logger.info(f"[Browser Session {session_id}] Using provided storage state JSON")
+            
+            if request.profileDirectory:
+                storage_state_path = await create_browser_profile(request.profileDirectory, request.storageStateJson)
+            else:
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                    json.dump(request.storageStateJson, f)
+                    storage_state_path = Path(f.name)
+            
+            browser_config["storage_state"] = str(storage_state_path)
+            
+        elif request.profileDirectory:
+          
+            browser_config["profile_directory"] = request.profileDirectory
+            browser_config['user_data_dir'] = "~/.config/google-chrome/"
+            logger.info(f"[Browser Session {session_id}] Using profile directory: {request.profileDirectory}")
+        # Launch browser session
+        browser_config['args']= DEF_ARGS
+        print(browser_config)
+        os.system("pkill -f chrome")
+        browser = Browser(**browser_config)
+        await browser.start()
+
+        # Create initial page
+        start_url = request.startUrl or "https://google.com"
+        page = await browser.new_page(start_url)
+
+        # Set viewport if requested
+        if request.viewport:
+            try:
+                await page.set_viewport_size(
+                    width=request.viewport.get("width", 1920),
+                    height=request.viewport.get("height", 1080),
+                )
+            except Exception as e:
+                logger.warning(f"[Browser Session {session_id}] Failed to set viewport: {str(e)}")
+
+        # Store session info
+        browser_sessions[str(session_id)] = {
+            "id": session_id,
+            "browser": browser,
+            "page": page,
+            "profile_directory": request.profileDirectory,
+            "start_url": start_url,
+            "created_at": datetime.now(),
+            "status": "active",
+            "storage_state_path": storage_state_path,
+        }
+        
+        logger.info(f"[Browser Session {session_id}] ✓ Browser launched successfully")
+        
+        return BrowserSessionResponse(
+            sessionId=session_id,
+            status="active",
+            vncUrl="/vnc.html?autoconnect=true&path=websockify",
+            startUrl=start_url,
+            profileDirectory=request.profileDirectory,
+            createdAt=datetime.now()
+        )
+        
+    except Exception as e:
+        logger.error(f"[Browser Session {session_id}] Failed to launch browser: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to launch browser: {str(e)}")
+
+@app.delete("/browser/{session_id}", tags=["Browser"])
+async def close_browser_session(session_id: UUID4):
+    """Close a specific browser session"""
+    session = browser_sessions.get(str(session_id))
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Browser session not found")
+    
+    try:
+        browser = session.get("browser")
+        if browser:
+            await browser.stop()
+            logger.info(f"[Browser Session {session_id}] ✓ Browser closed")
+        
+        storage_state_path = session.get("storage_state_path")
+        if storage_state_path and isinstance(storage_state_path, Path):
+            if "tmp" in str(storage_state_path):
+                try:
+                    storage_state_path.unlink()
+                    logger.info(f"[Browser Session {session_id}] ✓ Temp storage state cleaned up")
+                except:
+                    pass
+        
+        del browser_sessions[str(session_id)]
+        
+        return {"message": "Browser session closed successfully", "sessionId": session_id}
+        
+    except Exception as e:
+        logger.error(f"[Browser Session {session_id}] Failed to close browser: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to close browser: {str(e)}")
+
+@app.get("/browser/sessions", response_model=List[BrowserSessionInfo], tags=["Browser"])
+async def list_browser_sessions():
+    """List all active browser sessions"""
+    sessions: List[BrowserSessionInfo] = []
+    
+    for session_id, session_data in browser_sessions.items():
+        sessions.append(BrowserSessionInfo(
+            sessionId=session_data["id"],
+            status=session_data["status"],
+            profileDirectory=session_data.get("profile_directory"),
+            startUrl=session_data.get("start_url", "about:blank"),
+            createdAt=session_data["created_at"],
+            vncUrl="/vnc.html?autoconnect=true&path=websockify",
+            isActive=session_data["status"] == "active"
+        ))
+    
+    return sessions
+
+@app.post("/browser/{session_id}/navigate", tags=["Browser"])
+async def navigate_browser(session_id: UUID4, url: str = Query(..., description="URL to navigate to")):
+    """Navigate an active browser session to a specific URL"""
+    session = browser_sessions.get(str(session_id))
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Browser session not found")
+    
+    try:
+        browser = session.get("browser")
+        if not browser:
+            raise HTTPException(status_code=400, detail="Browser instance not available")
+        
+        page = session.get("page")
+        if page is None:
+            # fallback: try to get current pages from browser
+            pages = await browser.get_pages()
+            if pages:
+                page = pages[0]
+            else:
+                page = await browser.new_page("about:blank")
+            session["page"] = page
+
+        await page.goto(url)
+        logger.info(f"[Browser Session {session_id}] ✓ Navigated to {url}")
+        session["start_url"] = url
+        
+        return {"message": f"Navigated to {url}", "sessionId": session_id}
+            
+    except Exception as e:
+        logger.error(f"[Browser Session {session_id}] Failed to navigate: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to navigate: {str(e)}")
+
+@app.post("/browser/{session_id}/save-state", tags=["Browser"])
+async def save_browser_state(session_id: UUID4, profile_directory: Optional[str] = None):
+    """
+    Save the current browser state (cookies, localStorage, etc.)
+
+    NOTE: The public Browser API in the provided docs does not expose a direct
+    storage-state saving method. This endpoint currently returns 501 to indicate
+    that this operation is not supported with the documented API.
+    """
+    session = browser_sessions.get(str(session_id))
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Browser session not found")
+    
+    # Placeholder until browser_use exposes a public storage-state API
+    raise HTTPException(
+        status_code=501,
+        detail="Saving browser storage state is not supported by the documented browser_use API"
+    )
+
+@app.get("/browser/profiles", tags=["Browser"])
+async def list_browser_profiles():
+    """List all saved browser profiles"""
+    profiles_dir = Path("/app/browser_profiles")
+    
+    if not profiles_dir.exists():
+        return {"profiles": []}
+    
+    profiles = []
+    for profile_dir in profiles_dir.iterdir():
+        if profile_dir.is_dir():
+            state_file = profile_dir / "state.json"
+            profile_info = {
+                "name": profile_dir.name,
+                "hasState": state_file.exists(),
+                "created": datetime.fromtimestamp(profile_dir.stat().st_ctime) if profile_dir.exists() else None
+            }
+            
+            profile_info["inUse"] = any(
+                s.get("profile_directory") == profile_dir.name 
+                for s in browser_sessions.values()
+            )
+            
+            profiles.append(profile_info)
+    
+    return {"profiles": profiles}
+
+@app.delete("/browser/profiles/{profile_directory}", tags=["Browser"])
+async def delete_browser_profile(profile_directory: str):
+    """Delete a saved browser profile"""
+    if any(s.get("profile_directory") == profile_directory for s in browser_sessions.values()):
+        raise HTTPException(status_code=400, detail="Profile is currently in use")
+    
+    profiles_dir = Path("/app/browser_profiles")
+    profile_path = profiles_dir / profile_directory
+    
+    if not profile_path.exists():
+        raise HTTPException(status_code=404, detail="Profile not found")
+    
+    try:
+        import shutil
+        shutil.rmtree(profile_path)
+        logger.info(f"✓ Profile deleted: {profile_directory}")
+        return {"message": f"Profile '{profile_directory}' deleted successfully"}
+    except Exception as e:
+        logger.error(f"Failed to delete profile {profile_directory}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete profile: {str(e)}")
+
+@app.get("/", tags=["Root"])
+async def root():
+    return {
+        "message": "Browser-Use API v2",
+        "version": "2.0.0",
+        "docs": "/docs",
+        "endpoints": {
+            "Tasks": {
+                "POST /tasks": "Create a new browser automation task",
+                "GET /tasks": "List all tasks with pagination",
+                "GET /tasks/{task_id}": "Get detailed task information",
+                "PATCH /tasks/{task_id}": "Update task (stop, pause, resume)",
+                "GET /tasks/{task_id}/logs": "Get task execution logs",
+                "GET /tasks/{task_id}/vnc": "Get VNC connection for task"
+            },
+            "Browser Sessions": {
+                "POST /browser/launch": "Launch a browser with specific profile",
+                "GET /browser/sessions": "List all active browser sessions",
+                "DELETE /browser/{session_id}": "Close a browser session",
+                "POST /browser/{session_id}/navigate": "Navigate browser to URL",
+                "POST /browser/{session_id}/save-state": "Save current browser state (not yet supported via public API)",
+                "GET /browser/profiles": "List saved browser profiles",
+                "DELETE /browser/profiles/{profile_directory}": "Delete a browser profile"
+            },
+            "System": {
+                "GET /health": "Health check",
+                "GET /vnc/health": "VNC services health check"
+            }
+        }
+    }
 
 if __name__ == "__main__":
     import uvicorn

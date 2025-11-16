@@ -1,0 +1,1 @@
+docker stop browser-use-container; docker rm browser-use-container; docker build -t browser-use-api .; docker run -p 8080:8080 --name browser-use-container --env-file ./.env browser-use-api
