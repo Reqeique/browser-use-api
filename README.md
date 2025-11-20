@@ -119,7 +119,66 @@ uvicorn main:app --host 0.0.0.0 --port 8080
 
 ---
 
-## 🎯 Real-World Use Cases
+## � Development Branch Features
+
+This repository has two branches:
+
+### 📦 Main Branch (`main`)
+- **Stable, production-ready** version
+- Basic browser automation with VNC
+- Docker image: `reqeique/browser-use-api:latest`
+
+### 🚀 Dev Branch (`dev`)
+- Experimental features
+- **NEW:** Cloudflare R2 Profile Backup
+- Docker image: `reqeique/browser-use-api:dev`
+
+#### ☁️ Cloudflare R2 Profile Backup (Dev Only)
+
+Automatically backup browser profiles to Cloudflare R2 for persistence across container restarts - perfect for serverless deployments!
+
+**Features:**
+- ⚡ **30x faster** than individual file uploads (tar.gz compression)
+- 🔄 **Automatic sync:** Every 5 minutes + on session close
+- 🚀 **Lazy loading:** Browser launches instantly, profile restores in background
+- 💾 **Serverless-ready:** Survive ephemeral storage in containers
+
+**Quick Setup:**
+```bash
+# 1. Pull dev image
+docker pull reqeique/browser-use-api:dev
+
+# 2. Run with R2 credentials
+docker run -d \
+  -p 8080:8080 \
+  -e R2_ENDPOINT_URL=https://YOUR_ACCOUNT.r2.cloudflarestorage.com \
+  -e R2_ACCESS_KEY_ID=your_key \
+  -e R2_SECRET_ACCESS_KEY=your_secret \
+  -e R2_BUCKET_NAME=browser-profiles \
+  reqeique/browser-use-api:dev
+```
+
+**R2 Environment Variables:**
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `R2_ENDPOINT_URL` | Your R2 endpoint URL | ✅ Dev only |
+| `R2_ACCESS_KEY_ID` | R2 access key | ✅ Dev only |
+| `R2_SECRET_ACCESS_KEY` | R2 secret key | ✅ Dev only |
+| `R2_BUCKET_NAME` | Bucket name for profiles | ✅ Dev only |
+
+**How it works:**
+1. Launch browser with `profileDirectory` parameter
+2. Profile automatically restores from R2 in background (if exists)
+3. Profile automatically backs up to R2 every 5 minutes
+4. Final backup on session close
+
+**Performance:**
+- 330 files (12MB) → Single 4MB tar.gz archive
+- Upload/download: ~10-20 seconds (was 5+ minutes!)
+
+---
+
+## �🎯 Real-World Use Cases
 
 <table>
 <tr>
@@ -505,20 +564,6 @@ volumes:
 # Required for browser-use-llm (get $10 free)
 BROWSER_USE_API_KEY=your-key-here
 
-# Optional: For specific LLM models
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-GOOGLE_API_KEY=AIza...
-
-# Optional: Customize behavior
-DISPLAY=:99
-PYTHONUNBUFFERED=1
-```
-
-### Scaling with Kubernetes
-
-```yaml
-apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: browser-use-api
