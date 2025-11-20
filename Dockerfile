@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y \
                                                                                                                         RUN python -m playwright install chromium
 
                                                                                                                         # Copy application code
-                                                                                                                        COPY main.py .
+                                                                                                                        COPY . .
 
                                                                                                                         # Copy nginx configuration
                                                                                                                         COPY nginx.conf /etc/nginx/nginx.conf
