@@ -9,6 +9,7 @@ from enum import Enum
 import os
 import logging
 from dotenv import load_dotenv
+from cloud_storage import CloudStorage
 
 load_dotenv()
 # Set DISPLAY environment variable
@@ -248,6 +249,25 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
                 browser_config["profile_directory"] = request.profileDirectory
                 browser_config['user_data_dir'] = "/browser-use-profile/"
                 logger.info(f"[Browser Session {session_id}] Using profile directory: {request.profileDirectory}")
+                
+                # Start background task to restore profile from R2 (non-blocking)
+                async def restore_profile_background():
+                    try:
+                        cloud_storage = CloudStorage()
+                        if cloud_storage.client:
+                            full_profile_path = f"/browser-use-profile/{request.profileDirectory}"
+                            logger.info(f"[Task {task_id}] Starting background restore from R2 to {full_profile_path}...")
+                            await asyncio.to_thread(
+                                cloud_storage.download_directory,
+                                request.profileDirectory,
+                                full_profile_path
+                            )
+                            logger.info(f"[Task {task_id}] Background restore completed")
+                    except Exception as e:
+                        logger.warning(f"[Task {task_id}] Background restore failed: {e}")
+                
+                # Fire and forget - don't wait for restore
+                asyncio.create_task(restore_profile_background())
             
             # Launch browser session
             browser_config['args']= DEF_ARGS
@@ -522,6 +542,22 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
                 logger.info(f"[Task {task_id}] ✓ Browser closed successfully")
             except Exception as e:
                 logger.warning(f"[Task {task_id}] Failed to close browser: {str(e)}")
+        
+        # Backup profile to cloud storage if used
+        if request.profileDirectory:
+            try:
+                cloud_storage = CloudStorage()
+                if cloud_storage.client:
+                    full_profile_path = f"/browser-use-profile/{request.profileDirectory}"
+                    logger.info(f"[Task {task_id}] Backing up profile from {full_profile_path} to cloud storage...")
+                    # Run in thread pool to avoid blocking event loop
+                    await asyncio.to_thread(
+                        cloud_storage.upload_directory,
+                        full_profile_path,
+                        request.profileDirectory
+                    )
+            except Exception as e:
+                logger.warning(f"[Task {task_id}] Failed to backup profile to cloud storage: {e}")
     
         # Clean up state file if it was created
         if request.storageStateUrl:
@@ -835,7 +871,7 @@ browser_sessions: Dict[str, Dict[str, Any]] = {}
 
 async def create_browser_profile(profile_directory: str, storage_state: Optional[Dict] = None) -> Path:
     """Create a browser profile directory with optional storage state"""
-    profiles_dir = Path("/app/browser_profiles")
+    profiles_dir = Path("/browser-use-profile")
     profiles_dir.mkdir(exist_ok=True)
     
     profile_path = profiles_dir / profile_directory
@@ -903,6 +939,25 @@ async def launch_browser(request: BrowserSessionRequest, background_tasks: Backg
             browser_config["profile_directory"] = request.profileDirectory
             browser_config['user_data_dir'] = "/browser-use-profile"
             logger.info(f"[Browser Session {session_id}] Using profile directory: {request.profileDirectory}")
+
+            # Start background task to restore profile from R2 (non-blocking)
+            async def restore_profile_background():
+                try:
+                    cloud_storage = CloudStorage()
+                    if cloud_storage.client:
+                        full_profile_path = f"/browser-use-profile/{request.profileDirectory}"
+                        logger.info(f"[Browser Session {session_id}] Starting background restore from R2 to {full_profile_path}...")
+                        await asyncio.to_thread(
+                            cloud_storage.download_directory,
+                            request.profileDirectory,
+                            full_profile_path
+                        )
+                        logger.info(f"[Browser Session {session_id}] Background restore completed")
+                except Exception as e:
+                    logger.warning(f"[Browser Session {session_id}] Background restore failed: {e}")
+            
+            # Fire and forget - don't wait for restore
+            asyncio.create_task(restore_profile_background())
         # Launch browser session
         browser_config['args']= DEF_ARGS
         print(browser_config)
@@ -935,6 +990,31 @@ async def launch_browser(request: BrowserSessionRequest, background_tasks: Backg
             "status": "active",
             "storage_state_path": storage_state_path,
         }
+
+        # Start periodic backup task if profile directory is used
+        if request.profileDirectory:
+            async def periodic_backup():
+                while str(session_id) in browser_sessions:
+                    await asyncio.sleep(300)  # Backup every 5 minutes
+                    if str(session_id) not in browser_sessions:
+                        break
+                    
+                    try:
+                        cloud_storage = CloudStorage()
+                        if cloud_storage.client:
+                            full_profile_path = f"/browser-use-profile/{request.profileDirectory}"
+                            logger.info(f"[Browser Session {session_id}] Performing periodic backup from {full_profile_path} to cloud storage...")
+                            # Run in thread pool to avoid blocking event loop
+                            await asyncio.to_thread(
+                                cloud_storage.upload_directory,
+                                full_profile_path,
+                                request.profileDirectory
+                            )
+                    except Exception as e:
+                        logger.warning(f"[Browser Session {session_id}] Periodic backup failed: {e}")
+
+            backup_task = asyncio.create_task(periodic_backup())
+            browser_sessions[str(session_id)]["backup_task"] = backup_task
         
         logger.info(f"[Browser Session {session_id}] ✓ Browser launched successfully")
         
@@ -974,6 +1054,32 @@ async def close_browser_session(session_id: UUID4):
                 except:
                     pass
         
+        # Backup profile to cloud storage if used
+        profile_directory = session.get("profile_directory")
+        if profile_directory:
+            try:
+                cloud_storage = CloudStorage()
+                if cloud_storage.client:
+                    full_profile_path = f"/browser-use-profile/{profile_directory}"
+                    logger.info(f"[Browser Session {session_id}] Backing up profile from {full_profile_path} to cloud storage...")
+                    # Run in thread pool to avoid blocking event loop
+                    await asyncio.to_thread(
+                        cloud_storage.upload_directory,
+                        full_profile_path,
+                        profile_directory
+                    )
+            except Exception as e:
+                logger.warning(f"[Browser Session {session_id}] Failed to backup profile to cloud storage: {e}")
+
+        # Cancel periodic backup task
+        backup_task = session.get("backup_task")
+        if backup_task:
+            backup_task.cancel()
+            try:
+                await backup_task
+            except asyncio.CancelledError:
+                pass
+
         del browser_sessions[str(session_id)]
         
         return {"message": "Browser session closed successfully", "sessionId": session_id}
@@ -1056,7 +1162,7 @@ async def save_browser_state(session_id: UUID4, profile_directory: Optional[str]
 @app.get("/browser/profiles", tags=["Browser"])
 async def list_browser_profiles():
     """List all saved browser profiles"""
-    profiles_dir = Path("/app/browser_profiles")
+    profiles_dir = Path("/browser-use-profile")
     
     if not profiles_dir.exists():
         return {"profiles": []}
@@ -1086,7 +1192,7 @@ async def delete_browser_profile(profile_directory: str):
     if any(s.get("profile_directory") == profile_directory for s in browser_sessions.values()):
         raise HTTPException(status_code=400, detail="Profile is currently in use")
     
-    profiles_dir = Path("/app/browser_profiles")
+    profiles_dir = Path("/browser-use-profile")
     profile_path = profiles_dir / profile_directory
     
     if not profile_path.exists():
@@ -1096,6 +1202,20 @@ async def delete_browser_profile(profile_directory: str):
         import shutil
         shutil.rmtree(profile_path)
         logger.info(f"✓ Profile deleted: {profile_directory}")
+        
+        # Delete from cloud storage
+        try:
+            cloud_storage = CloudStorage()
+            if cloud_storage.client:
+                logger.info(f"Deleting profile {profile_directory} from cloud storage...")
+                # Run in thread pool to avoid blocking event loop
+                await asyncio.to_thread(
+                    cloud_storage.delete_directory,
+                    profile_directory
+                )
+        except Exception as e:
+            logger.warning(f"Failed to delete profile from cloud storage: {e}")
+
         return {"message": f"Profile '{profile_directory}' deleted successfully"}
     except Exception as e:
         logger.error(f"Failed to delete profile {profile_directory}: {str(e)}")

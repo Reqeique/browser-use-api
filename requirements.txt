@@ -7,3 +7,4 @@ langchain-anthropic
 langchain-google-genai
 python-dotenv
 playwright
+boto3
