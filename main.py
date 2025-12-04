@@ -51,6 +51,143 @@ class SupportedLLMs(str, Enum):
     LLAMA_4_MAVERICK_17B_128E_INSTRUCT = "llama-4-maverick-17b-128e-instruct"
     CLAUDE_3_7_SONNET_20250219 = "claude-3-7-sonnet-20250219"
 
+# ============== PROXY CONFIGURATION ==============
+class ProxyConfig(BaseModel):
+    """Proxy configuration for browser connections"""
+    server: str = Field(..., description="Proxy server URL (e.g., http://proxy.example.com:8080 or socks5://proxy.example.com:1080)")
+    username: Optional[str] = Field(default=None, description="Proxy username for authentication")
+    password: Optional[str] = Field(default=None, description="Proxy password for authentication")
+    bypass: Optional[List[str]] = Field(default=None, description="List of domains to bypass proxy (e.g., ['localhost', '*.example.com'])")
+
+class ProxyType(str, Enum):
+    HTTP = "http"
+    HTTPS = "https"
+    SOCKS4 = "socks4"
+    SOCKS5 = "socks5"
+
+class AdvancedProxyConfig(BaseModel):
+    """Advanced proxy configuration with more options"""
+    type: ProxyType = Field(default=ProxyType.HTTP, description="Proxy type")
+    host: str = Field(..., description="Proxy host (e.g., proxy.example.com)")
+    port: int = Field(..., description="Proxy port (e.g., 8080)")
+    username: Optional[str] = Field(default=None, description="Proxy username")
+    password: Optional[str] = Field(default=None, description="Proxy password")
+    bypass: Optional[List[str]] = Field(default=None, description="Domains to bypass")
+    
+    def to_server_url(self) -> str:
+        """Convert to server URL format"""
+        if self.username and self.password:
+            return f"{self.type.value}://{self.username}:{self.password}@{self.host}:{self.port}"
+        return f"{self.type.value}://{self.host}:{self.port}"
+# =================================================
+
+# ============== API KEY CONFIGURATION ==============
+class LLMProvider(str, Enum):
+    """LLM Provider types for API key mapping"""
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    GOOGLE = "google"
+    GROQ = "groq"
+    BROWSER_USE = "browser_use"
+
+class APIKeyConfig(BaseModel):
+    """API key configuration for different providers"""
+    openai: Optional[str] = Field(default=None, description="OpenAI API key")
+    anthropic: Optional[str] = Field(default=None, description="Anthropic API key")
+    google: Optional[str] = Field(default=None, description="Google AI API key")
+    groq: Optional[str] = Field(default=None, description="Groq API key")
+    browserUse: Optional[str] = Field(default=None, description="Browser-Use API key")
+
+# Mapping of LLM names to their providers
+LLM_PROVIDER_MAP: Dict[str, LLMProvider] = {
+    "browser-use-llm": LLMProvider.BROWSER_USE,
+    "gpt-4.1": LLMProvider.OPENAI,
+    "gpt-4.1-mini": LLMProvider.OPENAI,
+    "o4-mini": LLMProvider.OPENAI,
+    "o3": LLMProvider.OPENAI,
+    "gpt-4o": LLMProvider.OPENAI,
+    "gpt-4o-mini": LLMProvider.OPENAI,
+    "gemini-2.5-flash": LLMProvider.GOOGLE,
+    "gemini-2.5-pro": LLMProvider.GOOGLE,
+    "gemini-flash-latest": LLMProvider.GOOGLE,
+    "gemini-flash-lite-latest": LLMProvider.GOOGLE,
+    "claude-sonnet-4-20250514": LLMProvider.ANTHROPIC,
+    "claude-sonnet-4-5-20250929": LLMProvider.ANTHROPIC,
+    "claude-3-7-sonnet-20250219": LLMProvider.ANTHROPIC,
+    "llama-4-maverick-17b-128e-instruct": LLMProvider.GROQ,
+}
+
+# Environment variable names for each provider
+PROVIDER_ENV_VARS: Dict[LLMProvider, str] = {
+    LLMProvider.OPENAI: "OPENAI_API_KEY",
+    LLMProvider.ANTHROPIC: "ANTHROPIC_API_KEY",
+    LLMProvider.GOOGLE: "GOOGLE_API_KEY",
+    LLMProvider.GROQ: "GROQ_API_KEY",
+    LLMProvider.BROWSER_USE: "BROWSER_USE_API_KEY",
+}
+
+def get_provider_for_llm(llm_name: str) -> LLMProvider:
+    """Get the provider type for a given LLM name"""
+    return LLM_PROVIDER_MAP.get(llm_name, LLMProvider.BROWSER_USE)
+
+def get_api_key_for_provider(
+    provider: LLMProvider,
+    api_key: Optional[str] = None,
+    api_keys: Optional[APIKeyConfig] = None
+) -> Optional[str]:
+    """
+    Get API key for a provider with fallback logic:
+    1. Use directly provided api_key if available
+    2. Use provider-specific key from APIKeyConfig if available
+    3. Fall back to environment variable
+    
+    Args:
+        provider: The LLM provider
+        api_key: Directly provided API key (highest priority)
+        api_keys: APIKeyConfig object with provider-specific keys
+    
+    Returns:
+        API key string or None
+    """
+    # Priority 1: Directly provided API key
+    if api_key:
+        return api_key
+    
+    # Priority 2: Provider-specific key from APIKeyConfig
+    if api_keys:
+        provider_key_map = {
+            LLMProvider.OPENAI: api_keys.openai,
+            LLMProvider.ANTHROPIC: api_keys.anthropic,
+            LLMProvider.GOOGLE: api_keys.google,
+            LLMProvider.GROQ: api_keys.groq,
+            LLMProvider.BROWSER_USE: api_keys.browserUse,
+        }
+        if provider_key_map.get(provider):
+            return provider_key_map[provider]
+    
+    # Priority 3: Environment variable
+    env_var = PROVIDER_ENV_VARS.get(provider)
+    if env_var:
+        return os.environ.get(env_var)
+    
+    return None
+
+def set_api_key_env(provider: LLMProvider, api_key: str) -> None:
+    """Temporarily set API key in environment for LLM initialization"""
+    env_var = PROVIDER_ENV_VARS.get(provider)
+    if env_var and api_key:
+        os.environ[env_var] = api_key
+        logger.info(f"Set {env_var} from request")
+
+def mask_api_key(api_key: Optional[str]) -> str:
+    """Mask API key for logging (show first 4 and last 4 chars)"""
+    if not api_key:
+        return "None"
+    if len(api_key) <= 8:
+        return "****"
+    return f"{api_key[:4]}...{api_key[-4:]}"
+# ===================================================
+
 class TaskStepView(BaseModel):
     number: int
     memory: str
@@ -82,10 +219,19 @@ class CreateTaskRequest(BaseModel):
     systemPromptExtension: Optional[str] = None
     cdpUrl: Optional[str] = None
     pageExtractionLlm: Optional[SupportedLLMs] = Field(default=SupportedLLMs.BROWSER_USE_LLM)
-    storageStateUrl: Optional[str] = None  # NEW FIELD
+    storageStateUrl: Optional[str] = None
     keepAlive: Optional[bool] = Field(default=False)
     headless: Optional[bool] = Field(default=True)
     profileDirectory: Optional[str] = None
+    # ============== PROXY FIELDS ==============
+    proxy: Optional[ProxyConfig] = Field(default=None, description="Proxy configuration for the browser")
+    proxyUrl: Optional[str] = Field(default=None, description="Simple proxy URL (e.g., http://user:pass@proxy:8080)")
+    # ==========================================
+    # ============== API KEY FIELDS ==============
+    apiKey: Optional[str] = Field(default=None, description="API key for the main LLM (overrides environment variable)")
+    apiKeys: Optional[APIKeyConfig] = Field(default=None, description="Provider-specific API keys")
+    pageExtractionApiKey: Optional[str] = Field(default=None, description="API key for page extraction LLM (falls back to apiKey or env)")
+    # ============================================
 
 class TaskCreatedResponse(BaseModel):
     id: UUID4
@@ -172,10 +318,160 @@ def get_llm_model(llm_name: str):
 
     return llm_map.get(llm_name, llm_map["browser-use-llm"])
 
+# ============== PROXY HELPER FUNCTIONS ==============
+def build_proxy_config(proxy: Optional[ProxyConfig] = None, proxy_url: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Build proxy configuration dictionary for Playwright/browser-use
+    
+    Args:
+        proxy: ProxyConfig object with detailed proxy settings
+        proxy_url: Simple proxy URL string
+    
+    Returns:
+        Dictionary with proxy configuration or None
+    """
+    if proxy:
+        proxy_dict = {"server": proxy.server}
+        if proxy.username:
+            proxy_dict["username"] = proxy.username
+        if proxy.password:
+            proxy_dict["password"] = proxy.password
+        if proxy.bypass:
+            proxy_dict["bypass"] = ",".join(proxy.bypass)
+        return proxy_dict
+    elif proxy_url:
+        # Parse proxy URL to extract components
+        return parse_proxy_url(proxy_url)
+    return None
+
+def parse_proxy_url(proxy_url: str) -> Dict[str, Any]:
+    """
+    Parse a proxy URL into components
+    
+    Supports formats:
+    - http://proxy.example.com:8080
+    - http://user:pass@proxy.example.com:8080
+    - socks5://user:pass@proxy.example.com:1080
+    """
+    from urllib.parse import urlparse
+    
+    parsed = urlparse(proxy_url)
+    
+    proxy_dict = {
+        "server": f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+    }
+    
+    if parsed.username:
+        proxy_dict["username"] = parsed.username
+    if parsed.password:
+        proxy_dict["password"] = parsed.password
+    
+    return proxy_dict
+
+def get_proxy_args(proxy_config: Optional[Dict[str, Any]]) -> List[str]:
+    """
+    Generate Chrome command-line arguments for proxy
+    
+    Args:
+        proxy_config: Proxy configuration dictionary
+    
+    Returns:
+        List of Chrome arguments for proxy
+    """
+    if not proxy_config:
+        return []
+    
+    args = []
+    server = proxy_config.get("server", "")
+    
+    if server:
+        args.append(f"--proxy-server={server}")
+    
+    bypass = proxy_config.get("bypass", "")
+    if bypass:
+        args.append(f"--proxy-bypass-list={bypass}")
+    
+    return args
+# ====================================================
+
+# ============== LLM INITIALIZATION HELPER ==============
+def initialize_llm(
+    llm_name: str,
+    api_key: Optional[str] = None,
+    api_keys: Optional[APIKeyConfig] = None,
+    task_id: Optional[str] = None
+):
+    """
+    Initialize an LLM with the appropriate API key.
+    
+    Priority for API key:
+    1. Directly provided api_key parameter
+    2. Provider-specific key from api_keys config
+    3. Environment variable
+    
+    Args:
+        llm_name: Name of the LLM to initialize
+        api_key: Direct API key override
+        api_keys: APIKeyConfig with provider-specific keys
+        task_id: Task ID for logging
+    
+    Returns:
+        Initialized LLM instance
+    """
+    log_prefix = f"[Task {task_id}]" if task_id else "[LLM Init]"
+    
+    module_name, class_name, model_name = get_llm_model(llm_name)
+    provider = get_provider_for_llm(llm_name)
+    
+    # Get the appropriate API key
+    resolved_api_key = get_api_key_for_provider(provider, api_key, api_keys)
+    
+    logger.info(f"{log_prefix} Initializing LLM: {llm_name} (provider: {provider.value})")
+    logger.info(f"{log_prefix} API key source: {'request' if api_key else 'config' if (api_keys and resolved_api_key) else 'environment'}")
+    logger.info(f"{log_prefix} API key: {mask_api_key(resolved_api_key)}")
+    
+    if not resolved_api_key and provider != LLMProvider.BROWSER_USE:
+        raise ValueError(f"No API key found for {provider.value}. Provide via request or set {PROVIDER_ENV_VARS.get(provider)} environment variable.")
+    
+    # Import and initialize the LLM
+    module = __import__(module_name, fromlist=[class_name])
+    llm_class = getattr(module, class_name)
+    
+    # Build initialization kwargs
+    init_kwargs = {}
+    if model_name:
+        init_kwargs["model"] = model_name
+    
+    # Add API key to initialization based on provider
+    if resolved_api_key:
+        if provider == LLMProvider.OPENAI:
+            init_kwargs["api_key"] = resolved_api_key
+        elif provider == LLMProvider.ANTHROPIC:
+            init_kwargs["api_key"] = resolved_api_key
+        elif provider == LLMProvider.GOOGLE:
+            init_kwargs["api_key"] = resolved_api_key
+        elif provider == LLMProvider.GROQ:
+            init_kwargs["api_key"] = resolved_api_key
+        elif provider == LLMProvider.BROWSER_USE:
+            init_kwargs["api_key"] = resolved_api_key
+        
+        # Also set environment variable as fallback for libraries that read from env
+        set_api_key_env(provider, resolved_api_key)
+    
+    # Initialize the LLM
+    llm = llm_class(**init_kwargs)
+    
+    logger.info(f"{log_prefix} ✓ LLM initialized successfully")
+    return llm
+# =======================================================
+
 async def run_browser_task(task_id: str, request: CreateTaskRequest):
     session_id = uuid.uuid4()
     browser = None
     monitor_task = None
+    
+    # Store original env vars to restore later
+    original_env_vars: Dict[str, Optional[str]] = {}
     
     try:
         logger.info(f"[Task {task_id}] Starting task: {request.task}")
@@ -186,21 +482,39 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
 
         from browser_use import Agent, Browser
 
-        module_name, class_name, model_name = get_llm_model(request.llm.value if request.llm else "browser-use-llm")
-        logger.info(f"[Task {task_id}] Initializing LLM: module={module_name}, class={class_name}, model={model_name}")
-        page_extraction_module_name, page_extraction_class_name, page_extraction_model_name = get_llm_model(request.pageExtractionLlm.value if request.pageExtractionLlm else "browser-use-llm")
+        # ============== LLM INITIALIZATION WITH API KEYS ==============
+        llm_name = request.llm.value if request.llm else "browser-use-llm"
+        page_extraction_llm_name = request.pageExtractionLlm.value if request.pageExtractionLlm else "browser-use-llm"
         
         try:
-            module = __import__(module_name, fromlist=[class_name])
-            llm_class = getattr(module, class_name)
-            page_extraction_module = __import__(page_extraction_module_name, fromlist=[page_extraction_class_name])
-            page_extraction_llm_class = getattr(page_extraction_module, page_extraction_class_name)
-            llm = llm_class(model=model_name) if model_name else llm_class()
-            page_extraction_llm = page_extraction_llm_class(model=page_extraction_model_name) if page_extraction_model_name else page_extraction_llm_class()
-
-            logger.info(f"[Task {task_id}] ✓ LLM initialized successfully")
+            # Store original env vars for cleanup
+            for provider in LLMProvider:
+                env_var = PROVIDER_ENV_VARS.get(provider)
+                if env_var:
+                    original_env_vars[env_var] = os.environ.get(env_var)
+            
+            # Initialize main LLM
+            llm = initialize_llm(
+                llm_name=llm_name,
+                api_key=request.apiKey,
+                api_keys=request.apiKeys,
+                task_id=task_id
+            )
+            
+            # Initialize page extraction LLM
+            # Use pageExtractionApiKey if provided, otherwise fall back to main apiKey
+            page_extraction_key = request.pageExtractionApiKey or request.apiKey
+            page_extraction_llm = initialize_llm(
+                llm_name=page_extraction_llm_name,
+                api_key=page_extraction_key,
+                api_keys=request.apiKeys,
+                task_id=task_id
+            )
+            
+            logger.info(f"[Task {task_id}] ✓ All LLMs initialized successfully")
+            
         except Exception as e:
-            error_msg = f"Failed to initialize {request.llm} provider: {str(e)}"
+            error_msg = f"Failed to initialize LLM: {str(e)}"
             logger.error(f"[Task {task_id}] ✗ LLM initialization failed: {error_msg}")
             task_store[task_id]["status"] = TaskStatus.STOPPED
             task_store[task_id]["error"] = error_msg
@@ -209,6 +523,7 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
             if task_id in running_tasks:
                 del running_tasks[task_id]
             return
+        # ==============================================================
 
         try:
             import requests
@@ -228,6 +543,18 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
 
             if request.keepAlive:
                 browser_config["keep_alive"] = request.keepAlive
+
+            # ============== PROXY CONFIGURATION ==============
+            proxy_config = build_proxy_config(request.proxy, request.proxyUrl)
+            if proxy_config:
+                browser_config['proxy'] = proxy_config
+                logger.info(f"[Task {task_id}] ✓ Proxy configured: {proxy_config.get('server', 'N/A')}")
+                
+                # Add proxy args to browser arguments
+                proxy_args = get_proxy_args(proxy_config)
+                if proxy_args:
+                    logger.info(f"[Task {task_id}] Proxy args: {proxy_args}")
+            # =================================================
 
             # Handle storageStateUrl
             if request.storageStateUrl:
@@ -250,13 +577,19 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
                 logger.info(f"[Browser Session {session_id}] Using profile directory: {request.profileDirectory}")
             
             # Launch browser session
-            browser_config['args']= DEF_ARGS
+            browser_config['args'] = DEF_ARGS.copy()
+            
+            # Add proxy args if configured
+            if proxy_config:
+                proxy_args = get_proxy_args(proxy_config)
+                browser_config['args'].extend(proxy_args)
+            
             print(browser_config)
             os.system("pkill -f chrome")
-            browser_config['args']= DEF_ARGS
             browser = Browser(**browser_config)
             task_store[task_id]["browser"] = browser
             task_store[task_id]["vnc_enabled"] = True
+            task_store[task_id]["proxy_enabled"] = proxy_config is not None
             
             logger.info(f"[Task {task_id}] ✓ Browser initialized (VNC available at /vnc.html)")
         except Exception as e:
@@ -513,6 +846,13 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
         task_store[task_id]["error"] = str(e)
         task_store[task_id]["isSuccess"] = False
     finally:
+        # Restore original environment variables
+        for env_var, original_value in original_env_vars.items():
+            if original_value is not None:
+                os.environ[env_var] = original_value
+            elif env_var in os.environ:
+                del os.environ[env_var]
+        
         if task_id in task_store and "browser" in task_store[task_id]:
             del task_store[task_id]["browser"]
         # ✅ Always close the browser explicitly
@@ -532,6 +872,7 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
                     logger.info(f"[Task {task_id}] ✓ Cleaned up state file")
             except Exception as e:
                 logger.warning(f"[Task {task_id}] Failed to clean up state file: {str(e)}")
+
 @app.get("/tasks/{task_id}/vnc", response_model=VncResponse, tags=["Tasks"])
 async def get_vnc_port(task_id: UUID4):
     """
@@ -614,6 +955,8 @@ async def create_task(request: CreateTaskRequest):
         "browserUseVersion": "0.9.5",
         "isSuccess": None,
         "cdpUrl": request.cdpUrl if hasattr(request, "cdpUrl") else None,
+        "proxyEnabled": request.proxy is not None or request.proxyUrl is not None,
+        "apiKeyProvided": request.apiKey is not None or request.apiKeys is not None,
     }
 
     async_task = asyncio.create_task(run_browser_task(str(task_id), request))
@@ -718,7 +1061,9 @@ async def debug_task(task_id: UUID4):
         "steps_count": len(task_data.get("steps", [])),
         "raw_steps": task_data.get("steps", []),
         "has_browser": "browser" in task_data,
-        "vnc_enabled": task_data.get("vnc_enabled", False)
+        "vnc_enabled": task_data.get("vnc_enabled", False),
+        "proxy_enabled": task_data.get("proxy_enabled", False),
+        "api_key_provided": task_data.get("apiKeyProvided", False)
     }
 
 @app.patch("/tasks/{task_id}", response_model=TaskView, tags=["Tasks"])
@@ -812,6 +1157,10 @@ class BrowserSessionRequest(BaseModel):
     headless: Optional[bool] = Field(default=False, description="Run browser in headless mode")
     keepAlive: Optional[bool] = Field(default=True, description="Keep browser alive after opening")
     viewport: Optional[Dict[str, int]] = Field(default={"width": 1920, "height": 1080})
+    # ============== PROXY FIELDS ==============
+    proxy: Optional[ProxyConfig] = Field(default=None, description="Proxy configuration for the browser")
+    proxyUrl: Optional[str] = Field(default=None, description="Simple proxy URL (e.g., http://user:pass@proxy:8080)")
+    # ==========================================
 
 class BrowserSessionResponse(BaseModel):
     sessionId: UUID4
@@ -820,6 +1169,7 @@ class BrowserSessionResponse(BaseModel):
     startUrl: str
     profileDirectory: Optional[str] = None
     createdAt: datetime
+    proxyEnabled: bool = False
 
 class BrowserSessionInfo(BaseModel):
     sessionId: UUID4
@@ -829,6 +1179,7 @@ class BrowserSessionInfo(BaseModel):
     createdAt: datetime
     vncUrl: str
     isActive: bool
+    proxyEnabled: bool = False
 
 # Browser session storage
 browser_sessions: Dict[str, Dict[str, Any]] = {}
@@ -854,6 +1205,10 @@ async def launch_browser(request: BrowserSessionRequest, background_tasks: Backg
     """
     Launch a browser instance with a specific profile for manual interaction via VNC.
     The browser will stay open until explicitly closed.
+    
+    Supports proxy configuration via:
+    - proxy: Detailed proxy configuration object
+    - proxyUrl: Simple proxy URL string (e.g., http://user:pass@proxy.example.com:8080)
     """
     session_id = uuid.uuid4()
     
@@ -867,6 +1222,15 @@ async def launch_browser(request: BrowserSessionRequest, background_tasks: Backg
             "headless": request.headless,
             "keep_alive": request.keepAlive,
         }
+        
+        # ============== PROXY CONFIGURATION ==============
+        proxy_config = build_proxy_config(request.proxy, request.proxyUrl)
+        proxy_enabled = False
+        if proxy_config:
+            browser_config['proxy'] = proxy_config
+            proxy_enabled = True
+            logger.info(f"[Browser Session {session_id}] ✓ Proxy configured: {proxy_config.get('server', 'N/A')}")
+        # =================================================
         
         # Handle storage state from various sources
         storage_state_path: Optional[Path] = None
@@ -903,8 +1267,15 @@ async def launch_browser(request: BrowserSessionRequest, background_tasks: Backg
             browser_config["profile_directory"] = request.profileDirectory
             browser_config['user_data_dir'] = "/browser-use-profile"
             logger.info(f"[Browser Session {session_id}] Using profile directory: {request.profileDirectory}")
+        
         # Launch browser session
-        browser_config['args']= DEF_ARGS
+        browser_config['args'] = DEF_ARGS.copy()
+        
+        # Add proxy args if configured
+        if proxy_config:
+            proxy_args = get_proxy_args(proxy_config)
+            browser_config['args'].extend(proxy_args)
+        
         print(browser_config)
         os.system("pkill -f chrome")
         browser = Browser(**browser_config)
@@ -934,9 +1305,10 @@ async def launch_browser(request: BrowserSessionRequest, background_tasks: Backg
             "created_at": datetime.now(),
             "status": "active",
             "storage_state_path": storage_state_path,
+            "proxy_enabled": proxy_enabled,
         }
         
-        logger.info(f"[Browser Session {session_id}] ✓ Browser launched successfully")
+        logger.info(f"[Browser Session {session_id}] ✓ Browser launched successfully (proxy: {proxy_enabled})")
         
         return BrowserSessionResponse(
             sessionId=session_id,
@@ -944,7 +1316,8 @@ async def launch_browser(request: BrowserSessionRequest, background_tasks: Backg
             vncUrl="/vnc.html?autoconnect=true&path=websockify",
             startUrl=start_url,
             profileDirectory=request.profileDirectory,
-            createdAt=datetime.now()
+            createdAt=datetime.now(),
+            proxyEnabled=proxy_enabled
         )
         
     except Exception as e:
@@ -995,7 +1368,8 @@ async def list_browser_sessions():
             startUrl=session_data.get("start_url", "about:blank"),
             createdAt=session_data["created_at"],
             vncUrl="/vnc.html?autoconnect=true&path=websockify",
-            isActive=session_data["status"] == "active"
+            isActive=session_data["status"] == "active",
+            proxyEnabled=session_data.get("proxy_enabled", False)
         ))
     
     return sessions
@@ -1101,6 +1475,244 @@ async def delete_browser_profile(profile_directory: str):
         logger.error(f"Failed to delete profile {profile_directory}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete profile: {str(e)}")
 
+# ============== PROXY TESTING ENDPOINT ==============
+@app.post("/proxy/test", tags=["Proxy"])
+async def test_proxy(
+    proxy: Optional[ProxyConfig] = None,
+    proxyUrl: Optional[str] = Query(default=None, description="Simple proxy URL to test")
+):
+    """
+    Test a proxy configuration by attempting to connect to a test URL.
+    
+    Usage examples:
+    - With ProxyConfig object in body
+    - With proxyUrl query parameter: /proxy/test?proxyUrl=http://user:pass@proxy:8080
+    """
+    import aiohttp
+    
+    proxy_config = build_proxy_config(proxy, proxyUrl)
+    
+    if not proxy_config:
+        raise HTTPException(status_code=400, detail="No proxy configuration provided")
+    
+    test_url = "https://httpbin.org/ip"
+    
+    try:
+        # Build proxy URL for aiohttp
+        proxy_url = proxy_config.get("server", "")
+        
+        if proxy_config.get("username") and proxy_config.get("password"):
+            # Parse and rebuild with auth
+            from urllib.parse import urlparse
+            parsed = urlparse(proxy_url)
+            proxy_url = f"{parsed.scheme}://{proxy_config['username']}:{proxy_config['password']}@{parsed.netloc}"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(test_url, proxy=proxy_url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return {
+                        "success": True,
+                        "proxy": proxy_config.get("server"),
+                        "external_ip": data.get("origin"),
+                        "test_url": test_url,
+                        "response_status": response.status
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "proxy": proxy_config.get("server"),
+                        "error": f"HTTP {response.status}",
+                        "test_url": test_url
+                    }
+                    
+    except aiohttp.ClientProxyConnectionError as e:
+        return {
+            "success": False,
+            "proxy": proxy_config.get("server"),
+            "error": f"Proxy connection failed: {str(e)}",
+            "test_url": test_url
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "proxy": proxy_config.get("server"),
+            "error": str(e),
+            "test_url": test_url
+        }
+
+@app.get("/proxy/current-ip", tags=["Proxy"])
+async def get_current_ip():
+    """Get the current external IP address (without proxy)"""
+    import aiohttp
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://httpbin.org/ip", timeout=aiohttp.ClientTimeout(total=10)) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return {
+                        "ip": data.get("origin"),
+                        "source": "httpbin.org"
+                    }
+    except Exception as e:
+        pass
+    
+    # Fallback
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://api.ipify.org?format=json", timeout=aiohttp.ClientTimeout(total=10)) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return {
+                        "ip": data.get("ip"),
+                        "source": "ipify.org"
+                    }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get IP: {str(e)}")
+# ====================================================
+
+# ============== API KEY VALIDATION ENDPOINT ==============
+@app.post("/api-keys/validate", tags=["API Keys"])
+async def validate_api_key(
+    provider: LLMProvider = Query(..., description="LLM provider to validate"),
+    apiKey: Optional[str] = Query(default=None, description="API key to validate (uses env if not provided)")
+):
+    """
+    Validate an API key for a specific provider.
+    
+    Tests the API key by making a minimal request to the provider's API.
+    """
+    # Get the API key (from request or environment)
+    resolved_key = apiKey or os.environ.get(PROVIDER_ENV_VARS.get(provider, ""))
+    
+    if not resolved_key:
+        return {
+            "valid": False,
+            "provider": provider.value,
+            "error": f"No API key provided and {PROVIDER_ENV_VARS.get(provider)} not set in environment",
+            "source": "none"
+        }
+    
+    source = "request" if apiKey else "environment"
+    
+    try:
+        import aiohttp
+        
+        # Test endpoints for each provider
+        test_configs = {
+            LLMProvider.OPENAI: {
+                "url": "https://api.openai.com/v1/models",
+                "headers": {"Authorization": f"Bearer {resolved_key}"}
+            },
+            LLMProvider.ANTHROPIC: {
+                "url": "https://api.anthropic.com/v1/messages",
+                "headers": {
+                    "x-api-key": resolved_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                "method": "POST",
+                "body": {
+                    "model": "claude-3-haiku-20240307",
+                    "max_tokens": 1,
+                    "messages": [{"role": "user", "content": "Hi"}]
+                }
+            },
+            LLMProvider.GOOGLE: {
+                "url": f"https://generativelanguage.googleapis.com/v1/models?key={resolved_key}",
+                "headers": {}
+            },
+            LLMProvider.GROQ: {
+                "url": "https://api.groq.com/openai/v1/models",
+                "headers": {"Authorization": f"Bearer {resolved_key}"}
+            },
+            LLMProvider.BROWSER_USE: {
+                "url": "https://api.browser-use.com/v1/health",  # Placeholder
+                "headers": {"Authorization": f"Bearer {resolved_key}"}
+            }
+        }
+        
+        config = test_configs.get(provider)
+        if not config:
+            return {
+                "valid": False,
+                "provider": provider.value,
+                "error": "Unknown provider",
+                "source": source
+            }
+        
+        async with aiohttp.ClientSession() as session:
+            method = config.get("method", "GET")
+            kwargs = {
+                "headers": config["headers"],
+                "timeout": aiohttp.ClientTimeout(total=10)
+            }
+            
+            if method == "POST" and "body" in config:
+                kwargs["json"] = config["body"]
+            
+            async with session.request(method, config["url"], **kwargs) as response:
+                if response.status in [200, 201]:
+                    return {
+                        "valid": True,
+                        "provider": provider.value,
+                        "source": source,
+                        "key_preview": mask_api_key(resolved_key)
+                    }
+                elif response.status == 401:
+                    return {
+                        "valid": False,
+                        "provider": provider.value,
+                        "error": "Invalid API key (401 Unauthorized)",
+                        "source": source,
+                        "key_preview": mask_api_key(resolved_key)
+                    }
+                else:
+                    # Some providers return different status codes for valid keys
+                    # (e.g., 400 for bad request but valid auth)
+                    error_text = await response.text()
+                    return {
+                        "valid": False,
+                        "provider": provider.value,
+                        "error": f"HTTP {response.status}: {error_text[:200]}",
+                        "source": source,
+                        "key_preview": mask_api_key(resolved_key)
+                    }
+                    
+    except Exception as e:
+        return {
+            "valid": False,
+            "provider": provider.value,
+            "error": str(e),
+            "source": source,
+            "key_preview": mask_api_key(resolved_key)
+        }
+
+@app.get("/api-keys/status", tags=["API Keys"])
+async def get_api_keys_status():
+    """
+    Check which API keys are configured in the environment.
+    Does not reveal the actual keys, only whether they are set.
+    """
+    status = {}
+    
+    for provider in LLMProvider:
+        env_var = PROVIDER_ENV_VARS.get(provider)
+        if env_var:
+            value = os.environ.get(env_var)
+            status[provider.value] = {
+                "env_var": env_var,
+                "configured": value is not None and len(value) > 0,
+                "key_preview": mask_api_key(value) if value else None
+            }
+    
+    return {
+        "providers": status,
+        "note": "API keys can be overridden per-request using the 'apiKey' or 'apiKeys' fields"
+    }
+# =========================================================
+
 @app.get("/", tags=["Root"])
 async def root():
     return {
@@ -1125,9 +1737,76 @@ async def root():
                 "GET /browser/profiles": "List saved browser profiles",
                 "DELETE /browser/profiles/{profile_directory}": "Delete a browser profile"
             },
+            "Proxy": {
+                "POST /proxy/test": "Test a proxy configuration",
+                "GET /proxy/current-ip": "Get current external IP address"
+            },
+            "API Keys": {
+                "POST /api-keys/validate": "Validate an API key for a provider",
+                "GET /api-keys/status": "Check which API keys are configured"
+            },
             "System": {
                 "GET /health": "Health check",
                 "GET /vnc/health": "VNC services health check"
+            }
+        },
+        "proxy_support": {
+            "description": "All browser endpoints support proxy configuration",
+            "options": [
+                {
+                    "field": "proxy",
+                    "type": "ProxyConfig object",
+                    "example": {
+                        "server": "http://proxy.example.com:8080",
+                        "username": "user",
+                        "password": "pass",
+                        "bypass": ["localhost", "*.internal.com"]
+                    }
+                },
+                {
+                    "field": "proxyUrl",
+                    "type": "string",
+                    "example": "http://user:pass@proxy.example.com:8080"
+                }
+            ],
+            "supported_types": ["http", "https", "socks4", "socks5"]
+        },
+        "api_key_support": {
+            "description": "API keys can be provided per-request or via environment variables",
+            "priority": [
+                "1. Direct apiKey field in request (highest priority)",
+                "2. Provider-specific key in apiKeys object",
+                "3. Environment variable (fallback)"
+            ],
+            "options": [
+                {
+                    "field": "apiKey",
+                    "type": "string",
+                    "description": "Single API key for the main LLM"
+                },
+                {
+                    "field": "apiKeys",
+                    "type": "APIKeyConfig object",
+                    "example": {
+                        "openai": "sk-...",
+                        "anthropic": "sk-ant-...",
+                        "google": "AIza...",
+                        "groq": "gsk_...",
+                        "browserUse": "bu-..."
+                    }
+                },
+                {
+                    "field": "pageExtractionApiKey",
+                    "type": "string",
+                    "description": "Separate API key for page extraction LLM (optional)"
+                }
+            ],
+            "environment_variables": {
+                "OPENAI_API_KEY": "OpenAI API key",
+                "ANTHROPIC_API_KEY": "Anthropic API key",
+                "GOOGLE_API_KEY": "Google AI API key",
+                "GROQ_API_KEY": "Groq API key",
+                "BROWSER_USE_API_KEY": "Browser-Use API key"
             }
         }
     }
