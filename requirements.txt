@@ -1,10 +1,11 @@
 fastapi
 uvicorn[standard]
 pydantic
-browser-use==0.9.5
+browser-use==0.11.0
 langchain-openai
 langchain-anthropic
 langchain-google-genai
 python-dotenv
-playwright
+playwright==1.56.0
 boto3
+httpx

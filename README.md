@@ -377,6 +377,52 @@ Get real-time step-by-step updates as your agent executes:
 | `/browser/profiles` | GET | List saved browser profiles |
 | `/browser/profiles/{name}` | DELETE | Delete a browser profile |
 
+### 🛠️ Custom Tools (NEW!)
+
+Extend the agent's capabilities by registering custom HTTP tools (like APIs, webhooks, or database queries).
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/tools` | POST | Register a new custom tool |
+| `/tools` | GET | List all registered tools |
+| `/tools/{id}` | GET | Get details of a specific tool |
+| `/tools/{id}` | DELETE | Remove a registered tool |
+
+#### 📝 Registering a Tool
+Send a POST request to `/tools` with a valid **JSON Schema** for parameters.
+
+```json
+{
+  "name": "test_echo",
+    "description": "Simple echo tool that returns what you send it. Use this to verify the agent can call tools.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "message": {
+                "type": "string",
+                "description": "The message to echo back"
+            }
+        },
+        "required": ["message"]
+    },
+    "endpoint": "https://httpbin.org/post",
+    "method": "POST",
+    "headers": {
+        "Content-Type": "application/json"
+    }
+}
+```
+
+#### 🏃 Using a Tool in a Task
+Pass the `toolIds` when creating a task:
+
+```json
+{
+  "task": "Use the test_echo tool to say Hello World",
+  "toolIds": ["550e8400-e29b-41d4-a716-446655440000"]
+}
+```
+
 ### 🔧 System & Health
 
 | Endpoint | Method | Description |

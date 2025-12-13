@@ -10,7 +10,11 @@ import os
 import logging
 from dotenv import load_dotenv
 from cloud_storage import CloudStorage
-
+from custom_tools import (
+    CreateToolRequest, ToolView, ToolListResponse,
+    create_tool as create_tool_func, list_tools as list_tools_func,
+    get_tool as get_tool_func, delete_tool as delete_tool_func, register_tools_with_agent
+)
 load_dotenv()
 # Set DISPLAY environment variable
 os.environ['DISPLAY'] = ':99'
@@ -20,8 +24,10 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Browser-Use API v2",
     description="REST API compatible with Browser-Use Cloud API v2 specification",
-    version="2.0.0"
+    version="2.1.0"
 )
+
+print("--- LOADING MAIN.PY v2.1.0 ---")
 
 class TaskStatus(str, Enum):
     STARTED = "started"
@@ -50,6 +56,7 @@ class SupportedLLMs(str, Enum):
     GPT_4O = "gpt-4o"
     GPT_4O_MINI = "gpt-4o-mini"
     LLAMA_4_MAVERICK_17B_128E_INSTRUCT = "llama-4-maverick-17b-128e-instruct"
+    QWEN_3_32B = "qwen/qwen3-32b"
     CLAUDE_3_7_SONNET_20250219 = "claude-3-7-sonnet-20250219"
 
 # ============== PROXY CONFIGURATION ==============
@@ -116,6 +123,7 @@ LLM_PROVIDER_MAP: Dict[str, LLMProvider] = {
     "claude-sonnet-4-5-20250929": LLMProvider.ANTHROPIC,
     "claude-3-7-sonnet-20250219": LLMProvider.ANTHROPIC,
     "llama-4-maverick-17b-128e-instruct": LLMProvider.GROQ,
+    "qwen/qwen3-32b": LLMProvider.GROQ,
 }
 
 # Environment variable names for each provider
@@ -228,6 +236,7 @@ class CreateTaskRequest(BaseModel):
     proxy: Optional[ProxyConfig] = Field(default=None, description="Proxy configuration for the browser")
     proxyUrl: Optional[str] = Field(default=None, description="Simple proxy URL (e.g., http://user:pass@proxy:8080)")
     # ==========================================
+    toolIds: Optional[List[UUID4]] = Field(default=None, description="IDs of registered custom tools to use")
     # ============== API KEY FIELDS ==============
     apiKey: Optional[str] = Field(default=None, description="API key for the main LLM (overrides environment variable)")
     apiKeys: Optional[APIKeyConfig] = Field(default=None, description="Provider-specific API keys")
@@ -629,6 +638,13 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
             "browser": browser,
             "page_extraction_llm": page_extraction_llm,
         }
+                # Register custom tools if specified
+        if request.toolIds:
+            from browser_use import Tools
+            tools = Tools()
+            register_tools_with_agent(tools, [str(tid) for tid in request.toolIds], task_id)
+            agent_config["tools"] = tools
+            logger.info(f"[Task {task_id}] Registered {len(request.toolIds)} custom tools")
 
         if request.maxSteps:
             agent_config["max_steps"] = request.maxSteps
@@ -666,6 +682,7 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
                             actions = [str(a) for a in action]
                         else:
                             # Action might have a name/description
+                            
                             action_str = str(getattr(action, 'name', '') or getattr(action, 'action', '') or action)
                             if action_str:
                                 actions = [action_str]
@@ -952,7 +969,7 @@ async def vnc_health_check():
             checks[name] = False
     
     all_healthy = all(checks.values())
-    
+    # Tool endpoints - see custom_tools.py for implementation
     return {
         "healthy": all_healthy,
         "services": checks,
@@ -963,7 +980,34 @@ async def vnc_health_check():
 @app.get("/health", tags=["Health"])
 async def health_check():
     return {"status": "healthy"}
+# ============== Custom Tools Endpoints ==============
 
+@app.post("/tools", response_model=ToolView, status_code=201, tags=["Tools"])
+async def create_tool(request: CreateToolRequest):
+    """Register a new custom tool that browser agents can use."""
+    return create_tool_func(request)
+
+@app.get("/tools", response_model=ToolListResponse, tags=["Tools"])
+async def list_tools():
+    """List all registered custom tools"""
+    return list_tools_func()
+
+@app.get("/tools/{tool_id}", response_model=ToolView, tags=["Tools"])
+async def get_tool(tool_id: UUID4):
+    """Get a specific tool by ID"""
+    tool = get_tool_func(str(tool_id))
+    if not tool:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    return tool
+
+@app.delete("/tools/{tool_id}", status_code=204, tags=["Tools"])
+async def delete_tool(tool_id: UUID4):
+    """Delete a registered tool"""
+    if not delete_tool_func(str(tool_id)):
+        raise HTTPException(status_code=404, detail="Tool not found")
+    return None
+
+# =====================================================
 @app.post("/tasks", response_model=TaskCreatedResponse, status_code=202, tags=["Tasks"])
 async def create_task(request: CreateTaskRequest):
     task_id = uuid.uuid4()
@@ -1934,3 +1978,5 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=5000)
+
+

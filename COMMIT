@@ -1,0 +1,6 @@
+feat: add custom tools API support and documentation
+
+- ADD: custom_tools.py to handle tool registration, persistence, and execution
+- UPDATE: main.py to expose tool endpoints (/tools) and integrate tool execution into tasks
+- UPDATE: README.md with Custom Tools usage guide
+- DEP: add httpx to requirements.txt for tool execution
