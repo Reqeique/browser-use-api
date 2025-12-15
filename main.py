@@ -653,7 +653,7 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
                 browser_config['cdp_url'] = request.cdpUrl
 
             if request.vision:
-                browser_config["use_vsion"] = request.vision
+                browser_config["use_vision"] = request.vision
 
             if request.keepAlive:
                 browser_config["keep_alive"] = request.keepAlive
