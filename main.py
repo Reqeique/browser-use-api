@@ -652,8 +652,8 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
             if request.cdpUrl:
                 browser_config['cdp_url'] = request.cdpUrl
 
-            if request.vision:
-                browser_config["use_vision"] = request.vision
+            if request.startUrl:
+                browser_config["start_url"] = request.startUrl
 
             if request.keepAlive:
                 browser_config["keep_alive"] = request.keepAlive
@@ -758,6 +758,11 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
 
         if request.maxSteps:
             agent_config["max_steps"] = request.maxSteps
+
+        # Add vision configuration (Agent parameter, not Browser)
+        if request.vision is not None:
+            agent_config["use_vision"] = request.vision
+            logger.info(f"[Task {task_id}] Vision mode: {request.vision}")
 
         logger.info(f"[Task {task_id}] Creating agent with config: {list(agent_config.keys())}")
         agent = Agent(**agent_config)
