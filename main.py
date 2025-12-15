@@ -58,6 +58,39 @@ class SupportedLLMs(str, Enum):
     LLAMA_4_MAVERICK_17B_128E_INSTRUCT = "llama-4-maverick-17b-128e-instruct"
     QWEN_3_32B = "qwen/qwen3-32b"
     CLAUDE_3_7_SONNET_20250219 = "claude-3-7-sonnet-20250219"
+    # Mistral AI - Large Models
+    MISTRAL_LARGE_3_25_12 = "mistral-large-3-25-12"
+    MISTRAL_LARGE_2_1_24_11 = "mistral-large-2-1-24-11"
+    # Mistral AI - Medium Models
+    MISTRAL_MEDIUM_3_1_25_08 = "mistral-medium-3-1-25-08"
+    MISTRAL_MEDIUM_3_25_05 = "mistral-medium-3-25-05"
+    # Mistral AI - Small Models
+    MISTRAL_SMALL_3_2_25_06 = "mistral-small-3-2-25-06"
+    # Mistral AI - Ministral Models
+    MINISTRAL_3_14B_25_12 = "ministral-3-14b-25-12"
+    MINISTRAL_3_8B_25_12 = "ministral-3-8b-25-12"
+    MINISTRAL_3_3B_25_12 = "ministral-3-3b-25-12"
+    # Mistral AI - Magistral Models
+    MAGISTRAL_MEDIUM_1_2_25_09 = "magistral-medium-1-2-25-09"
+    MAGISTRAL_SMALL_1_2_25_09 = "magistral-small-1-2-25-09"
+    # Mistral AI - Codestral Models
+    CODESTRAL_25_08 = "codestral-25-08"
+    CODESTRAL_EMBED_25_05 = "codestral-embed-25-05"
+    # Mistral AI - Devstral Models
+    DEVSTRAL_2_25_12 = "devstral-2-25-12"
+    DEVSTRAL_SMALL_2_25_12 = "devstral-small-2-25-12"
+    DEVSTRAL_MEDIUM_1_0_25_07 = "devstral-medium-1-0-25-07"
+    DEVSTRAL_SMALL_1_1_25_07 = "devstral-small-1-1-25-07"
+    # Mistral AI - Voxtral (Audio) Models
+    VOXTRAL_MINI_TRANSCRIBE_25_07 = "voxtral-mini-transcribe-25-07"
+    VOXTRAL_MINI_25_07 = "voxtral-mini-25-07"
+    VOXTRAL_SMALL_25_07 = "voxtral-small-25-07"
+    # Mistral AI - Specialized Models
+    OCR_25_05 = "ocr-25-05"
+    MISTRAL_MODERATION_24_11 = "mistral-moderation-24-11"
+    PIXTRAL_LARGE_24_11 = "pixtral-large-24-11"
+    MISTRAL_NEMO_12B_24_07 = "mistral-nemo-12b-24-07"
+    MISTRAL_EMBED_23_12 = "mistral-embed-23-12"
 
 # ============== PROXY CONFIGURATION ==============
 class ProxyConfig(BaseModel):
@@ -96,6 +129,7 @@ class LLMProvider(str, Enum):
     ANTHROPIC = "anthropic"
     GOOGLE = "google"
     GROQ = "groq"
+    MISTRAL = "mistral"
     BROWSER_USE = "browser_use"
 
 class APIKeyConfig(BaseModel):
@@ -104,6 +138,7 @@ class APIKeyConfig(BaseModel):
     anthropic: Optional[str] = Field(default=None, description="Anthropic API key")
     google: Optional[str] = Field(default=None, description="Google AI API key")
     groq: Optional[str] = Field(default=None, description="Groq API key")
+    mistral: Optional[str] = Field(default=None, description="Mistral AI API key")
     browserUse: Optional[str] = Field(default=None, description="Browser-Use API key")
 
 # Mapping of LLM names to their providers
@@ -124,6 +159,31 @@ LLM_PROVIDER_MAP: Dict[str, LLMProvider] = {
     "claude-3-7-sonnet-20250219": LLMProvider.ANTHROPIC,
     "llama-4-maverick-17b-128e-instruct": LLMProvider.GROQ,
     "qwen/qwen3-32b": LLMProvider.GROQ,
+    # Mistral AI - All Models
+    "mistral-large-3-25-12": LLMProvider.MISTRAL,
+    "mistral-large-2-1-24-11": LLMProvider.MISTRAL,
+    "mistral-medium-3-1-25-08": LLMProvider.MISTRAL,
+    "mistral-medium-3-25-05": LLMProvider.MISTRAL,
+    "mistral-small-3-2-25-06": LLMProvider.MISTRAL,
+    "ministral-3-14b-25-12": LLMProvider.MISTRAL,
+    "ministral-3-8b-25-12": LLMProvider.MISTRAL,
+    "ministral-3-3b-25-12": LLMProvider.MISTRAL,
+    "magistral-medium-1-2-25-09": LLMProvider.MISTRAL,
+    "magistral-small-1-2-25-09": LLMProvider.MISTRAL,
+    "codestral-25-08": LLMProvider.MISTRAL,
+    "codestral-embed-25-05": LLMProvider.MISTRAL,
+    "devstral-2-25-12": LLMProvider.MISTRAL,
+    "devstral-small-2-25-12": LLMProvider.MISTRAL,
+    "devstral-medium-1-0-25-07": LLMProvider.MISTRAL,
+    "devstral-small-1-1-25-07": LLMProvider.MISTRAL,
+    "voxtral-mini-transcribe-25-07": LLMProvider.MISTRAL,
+    "voxtral-mini-25-07": LLMProvider.MISTRAL,
+    "voxtral-small-25-07": LLMProvider.MISTRAL,
+    "ocr-25-05": LLMProvider.MISTRAL,
+    "mistral-moderation-24-11": LLMProvider.MISTRAL,
+    "pixtral-large-24-11": LLMProvider.MISTRAL,
+    "mistral-nemo-12b-24-07": LLMProvider.MISTRAL,
+    "mistral-embed-23-12": LLMProvider.MISTRAL,
 }
 
 # Environment variable names for each provider
@@ -132,6 +192,7 @@ PROVIDER_ENV_VARS: Dict[LLMProvider, str] = {
     LLMProvider.ANTHROPIC: "ANTHROPIC_API_KEY",
     LLMProvider.GOOGLE: "GOOGLE_API_KEY",
     LLMProvider.GROQ: "GROQ_API_KEY",
+    LLMProvider.MISTRAL: "MISTRAL_API_KEY",
     LLMProvider.BROWSER_USE: "BROWSER_USE_API_KEY",
 }
 
@@ -169,6 +230,7 @@ def get_api_key_for_provider(
             LLMProvider.ANTHROPIC: api_keys.anthropic,
             LLMProvider.GOOGLE: api_keys.google,
             LLMProvider.GROQ: api_keys.groq,
+            LLMProvider.MISTRAL: api_keys.mistral,
             LLMProvider.BROWSER_USE: api_keys.browserUse,
         }
         if provider_key_map.get(provider):
@@ -241,7 +303,10 @@ class CreateTaskRequest(BaseModel):
     apiKey: Optional[str] = Field(default=None, description="API key for the main LLM (overrides environment variable)")
     apiKeys: Optional[APIKeyConfig] = Field(default=None, description="Provider-specific API keys")
     pageExtractionApiKey: Optional[str] = Field(default=None, description="API key for page extraction LLM (falls back to apiKey or env)")
-    # ============================================
+    # ============== FALLBACK LLM FIELDS ==============
+    fallbackLlm: Optional[SupportedLLMs] = Field(default=None, description="Backup LLM to use when primary LLM fails (rate limits, auth errors, server errors)")
+    fallbackApiKey: Optional[str] = Field(default=None, description="API key for fallback LLM (falls back to apiKeys or env)")
+    # ================================================
 
 class TaskCreatedResponse(BaseModel):
     id: UUID4
@@ -324,6 +389,31 @@ def get_llm_model(llm_name: str):
         "gpt-4o-mini": ("browser_use", "ChatOpenAI", "gpt-4o-mini"),
         "llama-4-maverick-17b-128e-instruct": ("browser_use", "ChatGroq", "meta-llama/llama-4-maverick-17b-128e-instruct"),
         "claude-3-7-sonnet-20250219": ("browser_use", "ChatAnthropic", "claude-3-7-sonnet-20250219"),
+        # Mistral AI - All Models
+        "mistral-large-3-25-12": ("browser_use", "ChatMistral", "mistral-large-3-25-12"),
+        "mistral-large-2-1-24-11": ("browser_use", "ChatMistral", "mistral-large-2-1-24-11"),
+        "mistral-medium-3-1-25-08": ("browser_use", "ChatMistral", "mistral-medium-3-1-25-08"),
+        "mistral-medium-3-25-05": ("browser_use", "ChatMistral", "mistral-medium-3-25-05"),
+        "mistral-small-3-2-25-06": ("browser_use", "ChatMistral", "mistral-small-3-2-25-06"),
+        "ministral-3-14b-25-12": ("browser_use", "ChatMistral", "ministral-3-14b-25-12"),
+        "ministral-3-8b-25-12": ("browser_use", "ChatMistral", "ministral-3-8b-25-12"),
+        "ministral-3-3b-25-12": ("browser_use", "ChatMistral", "ministral-3-3b-25-12"),
+        "magistral-medium-1-2-25-09": ("browser_use", "ChatMistral", "magistral-medium-1-2-25-09"),
+        "magistral-small-1-2-25-09": ("browser_use", "ChatMistral", "magistral-small-1-2-25-09"),
+        "codestral-25-08": ("browser_use", "ChatMistral", "codestral-25-08"),
+        "codestral-embed-25-05": ("browser_use", "ChatMistral", "codestral-embed-25-05"),
+        "devstral-2-25-12": ("browser_use", "ChatMistral", "devstral-2-25-12"),
+        "devstral-small-2-25-12": ("browser_use", "ChatMistral", "devstral-small-2-25-12"),
+        "devstral-medium-1-0-25-07": ("browser_use", "ChatMistral", "devstral-medium-1-0-25-07"),
+        "devstral-small-1-1-25-07": ("browser_use", "ChatMistral", "devstral-small-1-1-25-07"),
+        "voxtral-mini-transcribe-25-07": ("browser_use", "ChatMistral", "voxtral-mini-transcribe-25-07"),
+        "voxtral-mini-25-07": ("browser_use", "ChatMistral", "voxtral-mini-25-07"),
+        "voxtral-small-25-07": ("browser_use", "ChatMistral", "voxtral-small-25-07"),
+        "ocr-25-05": ("browser_use", "ChatMistral", "ocr-25-05"),
+        "mistral-moderation-24-11": ("browser_use", "ChatMistral", "mistral-moderation-24-11"),
+        "pixtral-large-24-11": ("browser_use", "ChatMistral", "pixtral-large-24-11"),
+        "mistral-nemo-12b-24-07": ("browser_use", "ChatMistral", "mistral-nemo-12b-24-07"),
+        "mistral-embed-23-12": ("browser_use", "ChatMistral", "mistral-embed-23-12"),
     }
 
     return llm_map.get(llm_name, llm_map["browser-use-llm"])
@@ -521,6 +611,20 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
                 task_id=task_id
             )
             
+            # Initialize fallback LLM if specified
+            fallback_llm = None
+            if request.fallbackLlm:
+                fallback_llm_name = request.fallbackLlm.value
+                fallback_key = request.fallbackApiKey or request.apiKey
+                logger.info(f"[Task {task_id}] Initializing fallback LLM: {fallback_llm_name}")
+                fallback_llm = initialize_llm(
+                    llm_name=fallback_llm_name,
+                    api_key=fallback_key,
+                    api_keys=request.apiKeys,
+                    task_id=task_id
+                )
+                logger.info(f"[Task {task_id}] ✓ Fallback LLM ready: {fallback_llm_name}")
+            
             logger.info(f"[Task {task_id}] ✓ All LLMs initialized successfully")
             
         except Exception as e:
@@ -638,7 +742,13 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
             "browser": browser,
             "page_extraction_llm": page_extraction_llm,
         }
-                # Register custom tools if specified
+        
+        # Add fallback LLM if specified
+        if fallback_llm:
+            agent_config["fallback_llm"] = fallback_llm
+            logger.info(f"[Task {task_id}] Fallback LLM configured for resilience")
+        
+        # Register custom tools if specified
         if request.toolIds:
             from browser_use import Tools
             tools = Tools()

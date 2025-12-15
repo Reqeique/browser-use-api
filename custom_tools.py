@@ -39,6 +39,10 @@ class CreateToolRequest(BaseModel):
     method: str = Field(default="POST", description="HTTP method: GET, POST, PUT, PATCH, DELETE")
     headers: Optional[Dict[str, str]] = Field(default=None, description="Static headers to include in requests")
     allowedDomains: Optional[List[str]] = Field(default=None, description="Domain restrictions for this tool")
+    payloadTemplate: Optional[Dict[str, Any]] = Field(
+        default=None, 
+        description="Template for transforming input. Use {{text}} as placeholder for the input text. Example for Gemini: {'contents': [{'parts': [{'text': '{{text}}'}]}]}"
+    )
 
 class ToolView(BaseModel):
     """Response model for tool details"""
@@ -50,6 +54,7 @@ class ToolView(BaseModel):
     method: str
     headers: Optional[Dict[str, str]] = None
     allowedDomains: Optional[List[str]] = None
+    payloadTemplate: Optional[Dict[str, Any]] = None
     createdAt: datetime
 
 class ToolListResponse(BaseModel):
@@ -76,6 +81,7 @@ def create_tool(request: CreateToolRequest) -> ToolView:
         "method": request.method.upper(),
         "headers": request.headers,
         "allowedDomains": request.allowedDomains,
+        "payloadTemplate": request.payloadTemplate,
         "createdAt": datetime.now()
     }
     
@@ -111,22 +117,38 @@ def get_tool_data(tool_id: str) -> Optional[Dict[str, Any]]:
 
 # ============== Tool Executor Factory ==============
 
+def _apply_template(template: Any, text_value: str) -> Any:
+    """
+    Recursively apply text replacement to a template.
+    Replaces {{text}} placeholders with the actual text value.
+    """
+    if isinstance(template, str):
+        return template.replace("{{text}}", text_value)
+    elif isinstance(template, dict):
+        return {k: _apply_template(v, text_value) for k, v in template.items()}
+    elif isinstance(template, list):
+        return [_apply_template(item, text_value) for item in template]
+    else:
+        return template
+
 def create_tool_executor(tool_def: Dict[str, Any]):
     """
     Factory function to create a tool executor for a registered tool.
-    Creates a function with explicit parameter (input_json: str) instead of **kwargs.
+    Creates a function with a descriptive 'text' parameter that LLM agents understand.
     """
     endpoint = tool_def["endpoint"]
     method = tool_def["method"]
     static_headers = tool_def.get("headers") or {}
     tool_name = tool_def.get("name", "custom_tool")
+    payload_template = tool_def.get("payloadTemplate")
+    tool_description = tool_def.get("description", "")
     
-    async def tool_executor(input_json: str) -> str:
+    async def tool_executor(text: str) -> str:
         """
-        Execute the registered tool by making HTTP request to its endpoint.
+        Execute the tool with a text input.
         
         Args:
-            input_json: JSON string containing the request payload
+            text: The text input/prompt to send to the tool's endpoint
         
         Returns:
             Response from the tool endpoint
@@ -134,12 +156,15 @@ def create_tool_executor(tool_def: Dict[str, Any]):
         import json
         
         try:
-            # Parse the input JSON
-            try:
-                payload = json.loads(input_json) if input_json else {}
-            except json.JSONDecodeError:
-                # If not valid JSON, treat as plain text query
-                payload = {"query": input_json}
+            logger.info(f"[{tool_name}] Received text input: {text[:100]}...")
+            
+            # Apply payload template if available
+            if payload_template:
+                payload = _apply_template(payload_template, text)
+                logger.info(f"[{tool_name}] Applied template, payload: {json.dumps(payload)[:200]}...")
+            else:
+                # Default: wrap text in a simple object
+                payload = {"text": text}
             
             async with httpx.AsyncClient(timeout=30.0) as client:
                 request_kwargs = {
