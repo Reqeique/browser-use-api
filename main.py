@@ -74,7 +74,7 @@ class SupportedLLMs(str, Enum):
     MAGISTRAL_MEDIUM_1_2_25_09 = "magistral-medium-1-2-25-09"
     MAGISTRAL_SMALL_1_2_25_09 = "magistral-small-1-2-25-09"
     # Mistral AI - Codestral Models
-    CODESTRAL_25_08 = "codestral-25-08"
+    CODESTRAL_25_08 = "codestral-2508"
     CODESTRAL_EMBED_25_05 = "codestral-embed-25-05"
     # Mistral AI - Devstral Models
     DEVSTRAL_2_25_12 = "devstral-2-25-12"
@@ -170,7 +170,7 @@ LLM_PROVIDER_MAP: Dict[str, LLMProvider] = {
     "ministral-3-3b-25-12": LLMProvider.MISTRAL,
     "magistral-medium-1-2-25-09": LLMProvider.MISTRAL,
     "magistral-small-1-2-25-09": LLMProvider.MISTRAL,
-    "codestral-25-08": LLMProvider.MISTRAL,
+    "codestral-2508": LLMProvider.MISTRAL,
     "codestral-embed-25-05": LLMProvider.MISTRAL,
     "devstral-2-25-12": LLMProvider.MISTRAL,
     "devstral-small-2-25-12": LLMProvider.MISTRAL,
@@ -390,8 +390,8 @@ def get_llm_model(llm_name: str):
         "llama-4-maverick-17b-128e-instruct": ("browser_use", "ChatGroq", "meta-llama/llama-4-maverick-17b-128e-instruct"),
         "claude-3-7-sonnet-20250219": ("browser_use", "ChatAnthropic", "claude-3-7-sonnet-20250219"),
         # Mistral AI - All Models
-        "mistral-large-3-25-12": ("browser_use", "ChatMistral", "mistral-large-3-25-12"),
-        "mistral-large-2-1-24-11": ("browser_use", "ChatMistral", "mistral-large-2-1-24-11"),
+        "mistral-large-3-2512": ("browser_use", "ChatMistral", "mistral-large-3-25-12"),
+        "mistral-large-2-1-2411": ("browser_use", "ChatMistral", "mistral-large-2-1-24-11"),
         "mistral-medium-3-1-25-08": ("browser_use", "ChatMistral", "mistral-medium-3-1-25-08"),
         "mistral-medium-3-25-05": ("browser_use", "ChatMistral", "mistral-medium-3-25-05"),
         "mistral-small-3-2-25-06": ("browser_use", "ChatMistral", "mistral-small-3-2-25-06"),
@@ -400,7 +400,7 @@ def get_llm_model(llm_name: str):
         "ministral-3-3b-25-12": ("browser_use", "ChatMistral", "ministral-3-3b-25-12"),
         "magistral-medium-1-2-25-09": ("browser_use", "ChatMistral", "magistral-medium-1-2-25-09"),
         "magistral-small-1-2-25-09": ("browser_use", "ChatMistral", "magistral-small-1-2-25-09"),
-        "codestral-25-08": ("browser_use", "ChatMistral", "codestral-25-08"),
+        "codestral-2508": ("browser_use", "ChatMistral", "codestral-2508"),
         "codestral-embed-25-05": ("browser_use", "ChatMistral", "codestral-embed-25-05"),
         "devstral-2-25-12": ("browser_use", "ChatMistral", "devstral-2-25-12"),
         "devstral-small-2-25-12": ("browser_use", "ChatMistral", "devstral-small-2-25-12"),
