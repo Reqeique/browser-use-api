@@ -652,8 +652,8 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
             if request.cdpUrl:
                 browser_config['cdp_url'] = request.cdpUrl
 
-            if request.startUrl:
-                browser_config["start_url"] = request.startUrl
+            if request.vision:
+                browser_config["use_vsion"] = request.vision
 
             if request.keepAlive:
                 browser_config["keep_alive"] = request.keepAlive
