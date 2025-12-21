@@ -133,9 +133,6 @@ class LLMProvider(str, Enum):
     BROWSER_USE = "browser_use"
     VERCEL = "vercel"
 
-# Vercel AI Gateway configuration
-VERCEL_AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1"
-
 class APIKeyConfig(BaseModel):
     """API key configuration for different providers"""
     openai: Optional[str] = Field(default=None, description="OpenAI API key")
@@ -314,9 +311,8 @@ class CreateTaskRequest(BaseModel):
     fallbackLlm: Optional[SupportedLLMs] = Field(default=None, description="Backup LLM to use when primary LLM fails (rate limits, auth errors, server errors)")
     fallbackApiKey: Optional[str] = Field(default=None, description="API key for fallback LLM (falls back to apiKeys or env)")
     # ============== VERCEL AI GATEWAY FIELDS ==============
-    useVercelGateway: Optional[bool] = Field(default=False, description="Route LLM requests through Vercel AI Gateway (https://ai-gateway.vercel.sh/v1)")
+    useVercelGateway: Optional[bool] = Field(default=False, description="Route LLM requests through Vercel AI Gateway using browser_use's ChatVercel")
     vercelGatewayApiKey: Optional[str] = Field(default=None, description="Vercel AI Gateway API key (uses VERCEL_AI_GATEWAY_API_KEY env var if not provided)")
-    vercelGatewayBaseUrl: Optional[str] = Field(default=None, description="Custom Vercel AI Gateway base URL (defaults to https://ai-gateway.vercel.sh/v1)")
     # ================================================
 
 class TaskCreatedResponse(BaseModel):
@@ -512,8 +508,7 @@ def initialize_llm(
     api_keys: Optional[APIKeyConfig] = None,
     task_id: Optional[str] = None,
     use_vercel_gateway: bool = False,
-    vercel_gateway_api_key: Optional[str] = None,
-    vercel_gateway_base_url: Optional[str] = None
+    vercel_gateway_api_key: Optional[str] = None
 ):
     """
     Initialize an LLM with the appropriate API key.
@@ -528,9 +523,8 @@ def initialize_llm(
         api_key: Direct API key override
         api_keys: APIKeyConfig with provider-specific keys
         task_id: Task ID for logging
-        use_vercel_gateway: If True, route requests through Vercel AI Gateway
+        use_vercel_gateway: If True, route requests through Vercel AI Gateway using ChatVercel
         vercel_gateway_api_key: API key for Vercel AI Gateway
-        vercel_gateway_base_url: Custom base URL for Vercel AI Gateway
     
     Returns:
         Initialized LLM instance
@@ -561,20 +555,15 @@ def initialize_llm(
                 "Provide vercelGatewayApiKey or set VERCEL_AI_GATEWAY_API_KEY environment variable."
             )
         
-        # Use Vercel Gateway - it's OpenAI compatible
-        base_url = vercel_gateway_base_url or VERCEL_AI_GATEWAY_BASE_URL
-        logger.info(f"{log_prefix} Gateway base URL: {base_url}")
+        # Use browser_use's native ChatVercel class
+        from browser_use import ChatVercel
         
-        # Import ChatOpenAI for Vercel Gateway (OpenAI-compatible API)
-        from langchain_openai import ChatOpenAI
-        
-        llm = ChatOpenAI(
+        llm = ChatVercel(
             model=model_name or llm_name,
-            api_key=gateway_key,
-            base_url=base_url
+            api_key=gateway_key
         )
         
-        logger.info(f"{log_prefix} ✓ LLM initialized via Vercel AI Gateway")
+        logger.info(f"{log_prefix} ✓ LLM initialized via Vercel AI Gateway (ChatVercel)")
         return llm
     
     if not resolved_api_key and provider != LLMProvider.BROWSER_USE:
@@ -649,8 +638,7 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
                 api_keys=request.apiKeys,
                 task_id=task_id,
                 use_vercel_gateway=request.useVercelGateway or False,
-                vercel_gateway_api_key=request.vercelGatewayApiKey,
-                vercel_gateway_base_url=request.vercelGatewayBaseUrl
+                vercel_gateway_api_key=request.vercelGatewayApiKey
             )
             
             # Initialize page extraction LLM
@@ -662,8 +650,7 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
                 api_keys=request.apiKeys,
                 task_id=task_id,
                 use_vercel_gateway=request.useVercelGateway or False,
-                vercel_gateway_api_key=request.vercelGatewayApiKey,
-                vercel_gateway_base_url=request.vercelGatewayBaseUrl
+                vercel_gateway_api_key=request.vercelGatewayApiKey
             )
             
             # Initialize fallback LLM if specified
@@ -678,8 +665,7 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
                     api_keys=request.apiKeys,
                     task_id=task_id,
                     use_vercel_gateway=request.useVercelGateway or False,
-                    vercel_gateway_api_key=request.vercelGatewayApiKey,
-                    vercel_gateway_base_url=request.vercelGatewayBaseUrl
+                    vercel_gateway_api_key=request.vercelGatewayApiKey
                 )
                 logger.info(f"[Task {task_id}] ✓ Fallback LLM ready: {fallback_llm_name}")
             
