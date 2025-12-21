@@ -42,55 +42,14 @@ class TaskUpdateAction(str, Enum):
     STOP_TASK_AND_SESSION = "stop_task_and_session"
 
 class SupportedLLMs(str, Enum):
+    """LLM providers - use modelName field for specific model versions"""
     BROWSER_USE_LLM = "browser-use-llm"
-    GPT_4_1 = "gpt-4.1"
-    GPT_4_1_MINI = "gpt-4.1-mini"
-    O4_MINI = "o4-mini"
-    O3 = "o3"
-    GEMINI_2_5_FLASH = "gemini-2.5-flash"
-    GEMINI_2_5_PRO = "gemini-2.5-pro"
-    GEMINI_FLASH_LATEST = "gemini-flash-latest"
-    GEMINI_FLASH_LITE_LATEST = "gemini-flash-lite-latest"
-    CLAUDE_SONNET_4_20250514 = "claude-sonnet-4-20250514"
-    CLAUDE_SONNET_4_5_20250929 = "claude-sonnet-4-5-20250929"
-    GPT_4O = "gpt-4o"
-    GPT_4O_MINI = "gpt-4o-mini"
-    LLAMA_4_MAVERICK_17B_128E_INSTRUCT = "llama-4-maverick-17b-128e-instruct"
-    QWEN_3_32B = "qwen/qwen3-32b"
-    CLAUDE_3_7_SONNET_20250219 = "claude-3-7-sonnet-20250219"
-    # Mistral AI - Large Models
-    MISTRAL_LARGE_3_25_12 = "mistral-large-3-25-12"
-    MISTRAL_LARGE_2_1_24_11 = "mistral-large-2-1-24-11"
-    # Mistral AI - Medium Models
-    MISTRAL_MEDIUM_3_1_25_08 = "mistral-medium-3-1-25-08"
-    MISTRAL_MEDIUM_3_25_05 = "mistral-medium-3-25-05"
-    # Mistral AI - Small Models
-    MISTRAL_SMALL_3_2_25_06 = "mistral-small-3-2-25-06"
-    # Mistral AI - Ministral Models
-    MINISTRAL_3_14B_25_12 = "ministral-3-14b-25-12"
-    MINISTRAL_3_8B_25_12 = "ministral-3-8b-25-12"
-    MINISTRAL_3_3B_25_12 = "ministral-3-3b-25-12"
-    # Mistral AI - Magistral Models
-    MAGISTRAL_MEDIUM_1_2_25_09 = "magistral-medium-1-2-25-09"
-    MAGISTRAL_SMALL_1_2_25_09 = "magistral-small-1-2-25-09"
-    # Mistral AI - Codestral Models
-    CODESTRAL_25_08 = "codestral-2508"
-    CODESTRAL_EMBED_25_05 = "codestral-embed-25-05"
-    # Mistral AI - Devstral Models
-    DEVSTRAL_2_25_12 = "devstral-2-25-12"
-    DEVSTRAL_SMALL_2_25_12 = "devstral-small-2-25-12"
-    DEVSTRAL_MEDIUM_1_0_25_07 = "devstral-medium-1-0-25-07"
-    DEVSTRAL_SMALL_1_1_25_07 = "devstral-small-1-1-25-07"
-    # Mistral AI - Voxtral (Audio) Models
-    VOXTRAL_MINI_TRANSCRIBE_25_07 = "voxtral-mini-transcribe-25-07"
-    VOXTRAL_MINI_25_07 = "voxtral-mini-25-07"
-    VOXTRAL_SMALL_25_07 = "voxtral-small-25-07"
-    # Mistral AI - Specialized Models
-    OCR_25_05 = "ocr-25-05"
-    MISTRAL_MODERATION_24_11 = "mistral-moderation-24-11"
-    PIXTRAL_LARGE_24_11 = "pixtral-large-24-11"
-    MISTRAL_NEMO_12B_24_07 = "mistral-nemo-12b-24-07"
-    MISTRAL_EMBED_23_12 = "mistral-embed-23-12"
+    # Provider shortcuts - use with modelName for specific models
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    GOOGLE = "google"
+    GROQ = "groq"
+    MISTRAL = "mistral"
 
 # ============== PROXY CONFIGURATION ==============
 class ProxyConfig(BaseModel):
@@ -143,49 +102,14 @@ class APIKeyConfig(BaseModel):
     browserUse: Optional[str] = Field(default=None, description="Browser-Use API key")
     vercelGateway: Optional[str] = Field(default=None, description="Vercel AI Gateway API key")
 
-# Mapping of LLM names to their providers
-LLM_PROVIDER_MAP: Dict[str, LLMProvider] = {
+# Direct provider mapping for provider shortcuts
+LLM_PROVIDER_DIRECT: Dict[str, LLMProvider] = {
     "browser-use-llm": LLMProvider.BROWSER_USE,
-    "gpt-4.1": LLMProvider.OPENAI,
-    "gpt-4.1-mini": LLMProvider.OPENAI,
-    "o4-mini": LLMProvider.OPENAI,
-    "o3": LLMProvider.OPENAI,
-    "gpt-4o": LLMProvider.OPENAI,
-    "gpt-4o-mini": LLMProvider.OPENAI,
-    "gemini-2.5-flash": LLMProvider.GOOGLE,
-    "gemini-2.5-pro": LLMProvider.GOOGLE,
-    "gemini-flash-latest": LLMProvider.GOOGLE,
-    "gemini-flash-lite-latest": LLMProvider.GOOGLE,
-    "claude-sonnet-4-20250514": LLMProvider.ANTHROPIC,
-    "claude-sonnet-4-5-20250929": LLMProvider.ANTHROPIC,
-    "claude-3-7-sonnet-20250219": LLMProvider.ANTHROPIC,
-    "llama-4-maverick-17b-128e-instruct": LLMProvider.GROQ,
-    "qwen/qwen3-32b": LLMProvider.GROQ,
-    # Mistral AI - All Models
-    "mistral-large-3-25-12": LLMProvider.MISTRAL,
-    "mistral-large-2-1-24-11": LLMProvider.MISTRAL,
-    "mistral-medium-3-1-25-08": LLMProvider.MISTRAL,
-    "mistral-medium-3-25-05": LLMProvider.MISTRAL,
-    "mistral-small-3-2-25-06": LLMProvider.MISTRAL,
-    "ministral-3-14b-25-12": LLMProvider.MISTRAL,
-    "ministral-3-8b-25-12": LLMProvider.MISTRAL,
-    "ministral-3-3b-25-12": LLMProvider.MISTRAL,
-    "magistral-medium-1-2-25-09": LLMProvider.MISTRAL,
-    "magistral-small-1-2-25-09": LLMProvider.MISTRAL,
-    "codestral-2508": LLMProvider.MISTRAL,
-    "codestral-embed-25-05": LLMProvider.MISTRAL,
-    "devstral-2-25-12": LLMProvider.MISTRAL,
-    "devstral-small-2-25-12": LLMProvider.MISTRAL,
-    "devstral-medium-1-0-25-07": LLMProvider.MISTRAL,
-    "devstral-small-1-1-25-07": LLMProvider.MISTRAL,
-    "voxtral-mini-transcribe-25-07": LLMProvider.MISTRAL,
-    "voxtral-mini-25-07": LLMProvider.MISTRAL,
-    "voxtral-small-25-07": LLMProvider.MISTRAL,
-    "ocr-25-05": LLMProvider.MISTRAL,
-    "mistral-moderation-24-11": LLMProvider.MISTRAL,
-    "pixtral-large-24-11": LLMProvider.MISTRAL,
-    "mistral-nemo-12b-24-07": LLMProvider.MISTRAL,
-    "mistral-embed-23-12": LLMProvider.MISTRAL,
+    "openai": LLMProvider.OPENAI,
+    "anthropic": LLMProvider.ANTHROPIC,
+    "google": LLMProvider.GOOGLE,
+    "groq": LLMProvider.GROQ,
+    "mistral": LLMProvider.MISTRAL,
 }
 
 # Environment variable names for each provider
@@ -199,9 +123,65 @@ PROVIDER_ENV_VARS: Dict[LLMProvider, str] = {
     LLMProvider.VERCEL: "VERCEL_AI_GATEWAY_API_KEY",
 }
 
+# ============== VERCEL AI GATEWAY MODEL NAMING ==============
+# Provider prefix mapping for auto-generating Vercel model names
+# See available models at: https://ai-gateway.vercel.sh/v1/models
+VERCEL_PROVIDER_PREFIX: Dict[LLMProvider, str] = {
+    LLMProvider.OPENAI: "openai",
+    LLMProvider.ANTHROPIC: "anthropic",
+    LLMProvider.GOOGLE: "google",
+    LLMProvider.GROQ: "groq",
+    LLMProvider.MISTRAL: "mistral",
+}
+
+def get_vercel_model_name(
+    llm_name: str,
+    model_name: Optional[str] = None,
+    vercel_model_override: Optional[str] = None
+) -> str:
+    """
+    Get the Vercel AI Gateway compatible model name for a given LLM.
+    
+    Priority:
+    1. Explicit vercel_model_override (user-specified Vercel model name)
+    2. If llm_name already contains '/', use as-is (already in Vercel format)
+    3. Auto-generate: {provider_prefix}/{model_name}
+    
+    Args:
+        llm_name: Internal LLM name (e.g., "gemini-2.5-flash")
+        model_name: Specific model name from llm_map (e.g., "gemini-flash-lite-latest")
+        vercel_model_override: Explicit Vercel model name (e.g., "google/gemini-3.0-flash")
+    
+    Returns:
+        Vercel-compatible model name (e.g., "google/gemini-2.5-flash")
+    """
+    # Priority 1: Explicit override from user
+    if vercel_model_override:
+        return vercel_model_override
+    
+    # Priority 2: Already in Vercel format (contains /)
+    if "/" in llm_name:
+        return llm_name
+    if model_name and "/" in model_name:
+        return model_name
+    
+    # Priority 3: Auto-generate with provider prefix
+    provider = get_provider_for_llm(llm_name)
+    prefix = VERCEL_PROVIDER_PREFIX.get(provider)
+    
+    # Use the more specific model_name if available, otherwise use llm_name
+    target_model = model_name or llm_name
+    
+    if prefix:
+        return f"{prefix}/{target_model}"
+    
+    # No known provider - return as-is
+    return target_model
+# =============================================================
+
 def get_provider_for_llm(llm_name: str) -> LLMProvider:
     """Get the provider type for a given LLM name"""
-    return LLM_PROVIDER_MAP.get(llm_name, LLMProvider.BROWSER_USE)
+    return LLM_PROVIDER_DIRECT.get(llm_name, LLMProvider.BROWSER_USE)
 
 def get_api_key_for_provider(
     provider: LLMProvider,
@@ -278,7 +258,11 @@ class FileView(BaseModel):
 
 class CreateTaskRequest(BaseModel):
     task: str
-    llm: Optional[SupportedLLMs] = Field(default=SupportedLLMs.BROWSER_USE_LLM)
+    # ============== PROVIDER & MODEL FIELDS ==============
+    provider: Optional[SupportedLLMs] = Field(default=SupportedLLMs.BROWSER_USE_LLM, description="LLM provider to use (openai, anthropic, google, groq, mistral)")
+    llm: Optional[str] = Field(default=None, description="Model name (e.g., 'gpt-4o', 'gemini-2.5-flash', 'claude-sonnet-4-20250514')")
+    pageExtractionLlm: Optional[str] = Field(default=None, description="Model for page extraction (defaults to main llm)")
+    # =====================================================
     startUrl: Optional[str] = None
     maxSteps: Optional[int] = Field(default=100)
     structuredOutput: Optional[str] = None
@@ -293,7 +277,6 @@ class CreateTaskRequest(BaseModel):
     vision: Optional[Union[bool, str]] = Field(default="auto")
     systemPromptExtension: Optional[str] = None
     cdpUrl: Optional[str] = None
-    pageExtractionLlm: Optional[SupportedLLMs] = Field(default=SupportedLLMs.BROWSER_USE_LLM)
     storageStateUrl: Optional[str] = None
     keepAlive: Optional[bool] = Field(default=False)
     headless: Optional[bool] = Field(default=True)
@@ -308,11 +291,13 @@ class CreateTaskRequest(BaseModel):
     apiKeys: Optional[APIKeyConfig] = Field(default=None, description="Provider-specific API keys")
     pageExtractionApiKey: Optional[str] = Field(default=None, description="API key for page extraction LLM (falls back to apiKey or env)")
     # ============== FALLBACK LLM FIELDS ==============
-    fallbackLlm: Optional[SupportedLLMs] = Field(default=None, description="Backup LLM to use when primary LLM fails (rate limits, auth errors, server errors)")
+    fallbackProvider: Optional[SupportedLLMs] = Field(default=None, description="Backup provider when primary fails")
+    fallbackLlm: Optional[str] = Field(default=None, description="Backup model to use when primary LLM fails")
     fallbackApiKey: Optional[str] = Field(default=None, description="API key for fallback LLM (falls back to apiKeys or env)")
     # ============== VERCEL AI GATEWAY FIELDS ==============
     useVercelGateway: Optional[bool] = Field(default=False, description="Route LLM requests through Vercel AI Gateway using browser_use's ChatVercel")
     vercelGatewayApiKey: Optional[str] = Field(default=None, description="Vercel AI Gateway API key (uses VERCEL_AI_GATEWAY_API_KEY env var if not provided)")
+    vercelModelName: Optional[str] = Field(default=None, description="Explicit Vercel model name (e.g., 'google/gemini-3.0-flash'). If not set, auto-generates from provider/llm.")
     # ================================================
 
 class TaskCreatedResponse(BaseModel):
@@ -380,50 +365,40 @@ DEF_ARGS = [
 ]
 
 def get_llm_model(llm_name: str):
-    llm_map = {
-        "browser-use-llm": ("browser_use", "ChatBrowserUse", None),
-        "gpt-4.1": ("browser_use", "ChatOpenAI", "gpt-4"),
-        "gpt-4.1-mini": ("browser_use", "ChatOpenAI", "gpt-4-mini"),
-        "o4-mini": ("browser_use", "ChatOpenAI", "o1-mini"),
-        "o3": ("browser_use", "ChatOpenAI", "o1"),
-        "gemini-2.5-flash": ("browser_use", "ChatGoogle", "gemini-flash-lite-latest"),
-        "gemini-2.5-pro": ("browser_use", "ChatGoogle", "gemini-exp-1206"),
-        "gemini-flash-latest": ("browser_use", "ChatGoogle", "gemini-flash-latest"),
-        "gemini-flash-lite-latest": ("browser_use", "ChatGoogle", "gemini-flash-lite-latest"),
-        "claude-sonnet-4-20250514": ("browser_use", "ChatAnthropic", "claude-sonnet-4-0"),
-        "claude-sonnet-4-5-20250929": ("browser_use", "ChatAnthropic", "claude-sonnet-4-0"),
-        "gpt-4o": ("browser_use", "ChatOpenAI", "gpt-4o"),
-        "gpt-4o-mini": ("browser_use", "ChatOpenAI", "gpt-4o-mini"),
-        "llama-4-maverick-17b-128e-instruct": ("browser_use", "ChatGroq", "meta-llama/llama-4-maverick-17b-128e-instruct"),
-        "claude-3-7-sonnet-20250219": ("browser_use", "ChatAnthropic", "claude-3-7-sonnet-20250219"),
-        # Mistral AI - All Models
-        "mistral-large-3-2512": ("browser_use", "ChatMistral", "mistral-large-3-25-12"),
-        "mistral-large-2-1-2411": ("browser_use", "ChatMistral", "mistral-large-2-1-24-11"),
-        "mistral-medium-3-1-25-08": ("browser_use", "ChatMistral", "mistral-medium-3-1-25-08"),
-        "mistral-medium-3-25-05": ("browser_use", "ChatMistral", "mistral-medium-3-25-05"),
-        "mistral-small-3-2-25-06": ("browser_use", "ChatMistral", "mistral-small-3-2-25-06"),
-        "ministral-3-14b-25-12": ("browser_use", "ChatMistral", "ministral-3-14b-25-12"),
-        "ministral-3-8b-25-12": ("browser_use", "ChatMistral", "ministral-3-8b-25-12"),
-        "ministral-3-3b-25-12": ("browser_use", "ChatMistral", "ministral-3-3b-25-12"),
-        "magistral-medium-1-2-25-09": ("browser_use", "ChatMistral", "magistral-medium-1-2-25-09"),
-        "magistral-small-1-2-25-09": ("browser_use", "ChatMistral", "magistral-small-1-2-25-09"),
-        "codestral-2508": ("browser_use", "ChatMistral", "codestral-2508"),
-        "codestral-embed-25-05": ("browser_use", "ChatMistral", "codestral-embed-25-05"),
-        "devstral-2-25-12": ("browser_use", "ChatMistral", "devstral-2-25-12"),
-        "devstral-small-2-25-12": ("browser_use", "ChatMistral", "devstral-small-2-25-12"),
-        "devstral-medium-1-0-25-07": ("browser_use", "ChatMistral", "devstral-medium-1-0-25-07"),
-        "devstral-small-1-1-25-07": ("browser_use", "ChatMistral", "devstral-small-1-1-25-07"),
-        "voxtral-mini-transcribe-25-07": ("browser_use", "ChatMistral", "voxtral-mini-transcribe-25-07"),
-        "voxtral-mini-25-07": ("browser_use", "ChatMistral", "voxtral-mini-25-07"),
-        "voxtral-small-25-07": ("browser_use", "ChatMistral", "voxtral-small-25-07"),
-        "ocr-25-05": ("browser_use", "ChatMistral", "ocr-25-05"),
-        "mistral-moderation-24-11": ("browser_use", "ChatMistral", "mistral-moderation-24-11"),
-        "pixtral-large-24-11": ("browser_use", "ChatMistral", "pixtral-large-24-11"),
-        "mistral-nemo-12b-24-07": ("browser_use", "ChatMistral", "mistral-nemo-12b-24-07"),
-        "mistral-embed-23-12": ("browser_use", "ChatMistral", "mistral-embed-23-12"),
+    """
+    Get the module, class, and default model name for an LLM.
+    
+    This function maps provider types to their Chat classes.
+    The actual model name should be provided via modelName in the request.
+    
+    Args:
+        llm_name: The LLM identifier (used to determine provider)
+    
+    Returns:
+        Tuple of (module_name, class_name, default_model_name)
+        - module_name: Always "browser_use"
+        - class_name: The Chat class to use (e.g., "ChatOpenAI", "ChatGoogle")
+        - default_model_name: The llm_name itself (user should override with modelName if needed)
+    """
+    # Map providers to their Chat classes
+    PROVIDER_CLASS_MAP: Dict[LLMProvider, str] = {
+        LLMProvider.BROWSER_USE: "ChatBrowserUse",
+        LLMProvider.OPENAI: "ChatOpenAI",
+        LLMProvider.ANTHROPIC: "ChatAnthropic",
+        LLMProvider.GOOGLE: "ChatGoogle",
+        LLMProvider.GROQ: "ChatGroq",
+        LLMProvider.MISTRAL: "ChatMistral",
     }
-
-    return llm_map.get(llm_name, llm_map["browser-use-llm"])
+    
+    provider = get_provider_for_llm(llm_name)
+    class_name = PROVIDER_CLASS_MAP.get(provider, "ChatBrowserUse")
+    
+    # For browser-use-llm, no model name needed
+    if provider == LLMProvider.BROWSER_USE:
+        return ("browser_use", class_name, None)
+    
+    # Return the llm_name as the default model - user can override with modelName
+    return ("browser_use", class_name, llm_name)
 
 # ============== PROXY HELPER FUNCTIONS ==============
 def build_proxy_config(proxy: Optional[ProxyConfig] = None, proxy_url: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -508,7 +483,9 @@ def initialize_llm(
     api_keys: Optional[APIKeyConfig] = None,
     task_id: Optional[str] = None,
     use_vercel_gateway: bool = False,
-    vercel_gateway_api_key: Optional[str] = None
+    vercel_gateway_api_key: Optional[str] = None,
+    vercel_model_name: Optional[str] = None,
+    model_name_override: Optional[str] = None
 ):
     """
     Initialize an LLM with the appropriate API key.
@@ -518,26 +495,39 @@ def initialize_llm(
     2. Provider-specific key from api_keys config
     3. Environment variable
     
+    Priority for model name:
+    1. model_name_override (user's explicit request.modelName)
+    2. model_name from get_llm_model (internal mapping)
+    
     Args:
-        llm_name: Name of the LLM to initialize
+        llm_name: Name of the LLM to initialize (determines provider/class)
         api_key: Direct API key override
         api_keys: APIKeyConfig with provider-specific keys
         task_id: Task ID for logging
         use_vercel_gateway: If True, route requests through Vercel AI Gateway using ChatVercel
         vercel_gateway_api_key: API key for Vercel AI Gateway
+        vercel_model_name: Explicit Vercel model name (e.g., "google/gemini-3.0-flash")
+        model_name_override: Explicit model name for any provider (e.g., "gpt-4.1-2025-04-14")
     
     Returns:
         Initialized LLM instance
     """
     log_prefix = f"[Task {task_id}]" if task_id else "[LLM Init]"
     
-    module_name, class_name, model_name = get_llm_model(llm_name)
+    module_name, class_name, default_model_name = get_llm_model(llm_name)
     provider = get_provider_for_llm(llm_name)
+    
+    # Use override if provided, otherwise use default from mapping
+    model_name = model_name_override or default_model_name
     
     # Get the appropriate API key
     resolved_api_key = get_api_key_for_provider(provider, api_key, api_keys)
     
     logger.info(f"{log_prefix} Initializing LLM: {llm_name} (provider: {provider.value})")
+    if model_name_override:
+        logger.info(f"{log_prefix} Model override: {model_name_override}")
+    else:
+        logger.info(f"{log_prefix} Model: {model_name or 'default'}")
     logger.info(f"{log_prefix} API key source: {'request' if api_key else 'config' if (api_keys and resolved_api_key) else 'environment'}")
     logger.info(f"{log_prefix} API key: {mask_api_key(resolved_api_key)}")
     
@@ -555,11 +545,16 @@ def initialize_llm(
                 "Provide vercelGatewayApiKey or set VERCEL_AI_GATEWAY_API_KEY environment variable."
             )
         
+        # Convert internal model name to Vercel-compatible format
+        # Priority: explicit vercel_model_name > model_name_override > auto-generate
+        vercel_model = get_vercel_model_name(llm_name, model_name, vercel_model_name)
+        logger.info(f"{log_prefix} Vercel model: {vercel_model}")
+        
         # Use browser_use's native ChatVercel class
         from browser_use import ChatVercel
         
         llm = ChatVercel(
-            model=model_name or llm_name,
+            model=vercel_model,
             api_key=gateway_key
         )
         
@@ -580,18 +575,8 @@ def initialize_llm(
     
     # Add API key to initialization based on provider
     if resolved_api_key:
-        if provider == LLMProvider.OPENAI:
-            init_kwargs["api_key"] = resolved_api_key
-        elif provider == LLMProvider.ANTHROPIC:
-            init_kwargs["api_key"] = resolved_api_key
-        elif provider == LLMProvider.GOOGLE:
-            init_kwargs["api_key"] = resolved_api_key
-        elif provider == LLMProvider.GROQ:
-            init_kwargs["api_key"] = resolved_api_key
-        elif provider == LLMProvider.BROWSER_USE:
-            init_kwargs["api_key"] = resolved_api_key
-        elif provider == LLMProvider.MISTRAL:
-            init_kwargs["api_key"] = resolved_api_key
+        # All providers use 'api_key' parameter
+        init_kwargs["api_key"] = resolved_api_key
         
         # Also set environment variable as fallback for libraries that read from env
         set_api_key_env(provider, resolved_api_key)
@@ -621,8 +606,7 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
         from browser_use import Agent, Browser
 
         # ============== LLM INITIALIZATION WITH API KEYS ==============
-        llm_name = request.llm.value if request.llm else "browser-use-llm"
-        page_extraction_llm_name = request.pageExtractionLlm.value if request.pageExtractionLlm else "browser-use-llm"
+        provider_name = request.provider.value if request.provider else "browser-use-llm"
         
         try:
             # Store original env vars for cleanup
@@ -633,41 +617,48 @@ async def run_browser_task(task_id: str, request: CreateTaskRequest):
             
             # Initialize main LLM
             llm = initialize_llm(
-                llm_name=llm_name,
+                llm_name=provider_name,
                 api_key=request.apiKey,
                 api_keys=request.apiKeys,
                 task_id=task_id,
                 use_vercel_gateway=request.useVercelGateway or False,
-                vercel_gateway_api_key=request.vercelGatewayApiKey
+                vercel_gateway_api_key=request.vercelGatewayApiKey,
+                vercel_model_name=request.vercelModelName,
+                model_name_override=request.llm  # The actual model name
             )
             
             # Initialize page extraction LLM
-            # Use pageExtractionApiKey if provided, otherwise fall back to main apiKey
+            # Use pageExtractionLlm if provided, otherwise fall back to main llm
             page_extraction_key = request.pageExtractionApiKey or request.apiKey
             page_extraction_llm = initialize_llm(
-                llm_name=page_extraction_llm_name,
+                llm_name=provider_name,  # Use same provider
                 api_key=page_extraction_key,
                 api_keys=request.apiKeys,
                 task_id=task_id,
                 use_vercel_gateway=request.useVercelGateway or False,
-                vercel_gateway_api_key=request.vercelGatewayApiKey
+                vercel_gateway_api_key=request.vercelGatewayApiKey,
+                vercel_model_name=request.vercelModelName,
+                model_name_override=request.pageExtractionLlm or request.llm  # Page extraction model or main model
             )
             
             # Initialize fallback LLM if specified
             fallback_llm = None
-            if request.fallbackLlm:
-                fallback_llm_name = request.fallbackLlm.value
+            if request.fallbackProvider or request.fallbackLlm:
+                fallback_provider_name = request.fallbackProvider.value if request.fallbackProvider else provider_name
+                fallback_model = request.fallbackLlm or request.llm
                 fallback_key = request.fallbackApiKey or request.apiKey
-                logger.info(f"[Task {task_id}] Initializing fallback LLM: {fallback_llm_name}")
+                logger.info(f"[Task {task_id}] Initializing fallback LLM: {fallback_provider_name}/{fallback_model}")
                 fallback_llm = initialize_llm(
-                    llm_name=fallback_llm_name,
+                    llm_name=fallback_provider_name,
                     api_key=fallback_key,
                     api_keys=request.apiKeys,
                     task_id=task_id,
                     use_vercel_gateway=request.useVercelGateway or False,
-                    vercel_gateway_api_key=request.vercelGatewayApiKey
+                    vercel_gateway_api_key=request.vercelGatewayApiKey,
+                    vercel_model_name=request.vercelModelName,
+                    model_name_override=fallback_model
                 )
-                logger.info(f"[Task {task_id}] ✓ Fallback LLM ready: {fallback_llm_name}")
+                logger.info(f"[Task {task_id}] ✓ Fallback LLM ready: {fallback_provider_name}/{fallback_model}")
             
             logger.info(f"[Task {task_id}] ✓ All LLMs initialized successfully")
             
