@@ -1173,7 +1173,7 @@ async def create_task(request: CreateTaskRequest):
     task_store[str(task_id)] = {
         "id": task_id,
         "sessionId": session_id,
-        "llm": request.llm.value if request.llm else "browser-use-llm",
+        "llm": f"{request.provider.value if request.provider else 'browser-use-llm'}/{request.llm or 'default'}",
         "task": request.task,
         "status": TaskStatus.STARTED,
         "startedAt": datetime.now(),
